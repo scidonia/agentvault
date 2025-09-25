@@ -1,11 +1,16 @@
 [project]
 name = "agentvault"
 version = "0.1.0"
-description = "Add your description here"
+description = "A RAG application using BookWyrm and LangGraph for literary text analysis"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "bookwyrm>=0.1.0",
+    "langgraph>=0.0.40",
+    "langchain-core>=0.1.0",
+    "scikit-learn>=1.3.0",
+    "numpy>=1.24.0",
+    "requests>=2.31.0",
 ]
 
 [build-system]
@@ -13,4 +18,6 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project.scripts]
-hello = "agentvault.main:main"
+agentvault = "agentvault.main:main"
+rag-process = "agentvault.data_processor:main"
+rag-agent = "agentvault.rag_agent:main"
