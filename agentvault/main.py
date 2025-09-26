@@ -314,11 +314,27 @@ def drive_summary(
 ):
     """Show summary of Google Drive index."""
     
+    console.print(f"🔍 Looking for index file: {index_file}", style="dim")
     index_path = DATA_DIR / index_file
+    console.print(f"📁 Full path: {index_path}", style="dim")
+    
     if not index_path.exists():
-        console.print(f"❌ Index file {index_file} not found.", style="red")
+        console.print(f"❌ Index file {index_file} not found at {index_path}", style="red")
         console.print("Please run Google Drive indexing first:", style="yellow")
         console.print("  [bold]agentvault index-drive[/bold]")
+        
+        # Show what files do exist in the data directory
+        if DATA_DIR.exists():
+            existing_files = list(DATA_DIR.glob("*"))
+            if existing_files:
+                console.print(f"\n📂 Files found in {DATA_DIR}:", style="blue")
+                for file in existing_files:
+                    console.print(f"  • {file.name}", style="dim")
+            else:
+                console.print(f"\n📂 {DATA_DIR} directory is empty", style="dim")
+        else:
+            console.print(f"\n📂 {DATA_DIR} directory doesn't exist yet", style="dim")
+        
         raise typer.Exit(1)
     
     processor = GoogleDriveProcessor()
@@ -424,7 +440,8 @@ def main():
 @app.command()
 def version():
     """Show version information."""
-    console.print("agentvault version 0.1.0", style="bold blue")
+    console.print("🤖 agentvault version 0.1.0", style="bold blue")
+    console.print("BookWyrm RAG Agent - Ask questions about literary texts", style="dim")
 
 
 if __name__ == "__main__":
