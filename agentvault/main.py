@@ -23,12 +23,15 @@ from .google_drive_processor import GoogleDriveProcessor
 from .rag_agent import RAGAgent
 from .config import PROCESSED_DIR, DATA_DIR, GOOGLE_DRIVE_INDEX_FILE
 
+print("DEBUG: Creating typer app...")
 app = typer.Typer(
     name="agentvault",
     help="BookWyrm RAG Agent - Ask questions about literary texts",
     rich_markup_mode="rich",
 )
+print("DEBUG: Typer app created")
 console = Console()
+print("DEBUG: Console created")
 
 
 @app.command()
@@ -210,6 +213,8 @@ def summary():
     console.print(table)
 
 
+print("DEBUG: Registering index_drive command...")
+
 @app.command()
 def index_drive(
     output_file: str = typer.Option(
@@ -224,7 +229,7 @@ def index_drive(
 ):
     """Index Google Drive files and create searchable database with detailed progress tracking."""
     
-    print("DEBUG 1: Function entry")
+    print("DEBUG 1: Function entry - index_drive called!")
     
     try:
         print("DEBUG 2: Inside try block")
@@ -583,5 +588,8 @@ def version():
     )
 
 
+print("DEBUG: Command registration complete")
+
 if __name__ == "__main__":
+    print("DEBUG: Running app directly")
     app()
