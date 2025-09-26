@@ -345,9 +345,11 @@ class GoogleDriveProcessor:
         self, output_file: str = "google_drive_index.parquet", progress_callback=None
     ) -> bool:
         """Process entire Google Drive and create Parquet index."""
-        if not self.authenticate(progress_callback):
-            logger.error("Failed to authenticate with Google Drive")
-            return False
+        # Don't re-authenticate if we're already authenticated
+        if not self.service:
+            if not self.authenticate(progress_callback):
+                logger.error("Failed to authenticate with Google Drive")
+                return False
 
         logger.info("Starting Google Drive indexing...")
 
