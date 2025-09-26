@@ -224,6 +224,12 @@ def index_drive(
     debug: bool = typer.Option(
         False, "--debug", help="Show debug information"
     ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-n", help="Process only N files"
+    ),
+    skip: int = typer.Option(
+        0, "--skip", "-s", help="Skip first M files (start from Mth file)"
+    ),
 ):
     """Index Google Drive files and create searchable database with detailed progress tracking."""
     
@@ -314,13 +320,17 @@ def index_drive(
                     folders=stats["folders"],
                     docs=stats["documents"],
                 )
+                
+                # Show additional stats in verbose mode
+                if verbose and "processed" in stats:
+                    console.print(f"  📊 Processed: {stats['processed']}, Skipped: {stats.get('skipped', 0)}, Duplicates: {stats.get('duplicates', 0)}", style="dim")
 
                 # Show current path in verbose mode
                 if verbose and current_path and phase != "saving":
                     console.print(f"  📂 {current_path}", style="dim")
 
             success = processor.process_drive(
-                output_file, progress_callback=update_progress
+                output_file, progress_callback=update_progress, limit=limit, skip=skip
             )
 
             if not success:

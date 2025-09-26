@@ -3,6 +3,7 @@
 import json
 import os
 import pickle
+import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Iterator
 import logging
@@ -352,7 +353,7 @@ class GoogleDriveProcessor:
                 yield file_info
 
     def process_drive(
-        self, output_file: str = "google_drive_index.parquet", progress_callback=None
+        self, output_file: str = "google_drive_index.parquet", progress_callback=None, limit: Optional[int] = None, skip: int = 0
     ) -> bool:
         """Process entire Google Drive and create Parquet index."""
         # Don't re-authenticate if we're already authenticated
@@ -363,16 +364,55 @@ class GoogleDriveProcessor:
 
         logger.info("Starting Google Drive indexing...")
 
+        # Load existing index to check for duplicates
+        output_path = DATA_DIR / output_file
+        existing_hashes = set()
+        existing_data = []
+        
+        if output_path.exists():
+            try:
+                existing_df = pd.read_parquet(output_path)
+                existing_hashes = set(existing_df.get('file_hash', []))
+                existing_data = existing_df.to_dict('records')
+                logger.info(f"Loaded {len(existing_data)} existing records with {len(existing_hashes)} hashes")
+            except Exception as e:
+                logger.warning(f"Could not load existing parquet file: {e}")
+
         # Collect all file information
         files_data = []
         file_count = 0
         folder_count = 0
         error_count = 0
+        processed_count = 0
+        skipped_count = 0
+        duplicate_count = 0
 
         try:
             for file_info in self.traverse_drive():
+                # Apply skip logic
+                if file_count < skip:
+                    file_count += 1
+                    skipped_count += 1
+                    continue
+                
+                # Apply limit logic
+                if limit is not None and processed_count >= limit:
+                    break
+                
+                # Calculate file hash for deduplication
+                file_hash = self._calculate_file_hash(file_info)
+                file_info['file_hash'] = file_hash
+                
+                # Check if file already exists in index
+                if file_hash in existing_hashes:
+                    duplicate_count += 1
+                    logger.debug(f"Skipping duplicate file: {file_info.get('name', 'Unknown')}")
+                    file_count += 1
+                    continue
+                
                 files_data.append(file_info)
                 file_count += 1
+                processed_count += 1
 
                 if file_info.get("is_folder", False):
                     folder_count += 1
@@ -384,15 +424,18 @@ class GoogleDriveProcessor:
                             "total_files": file_count,
                             "folders": folder_count,
                             "documents": file_count - folder_count,
+                            "processed": processed_count,
+                            "skipped": skipped_count,
+                            "duplicates": duplicate_count,
                             "current_file": file_info.get("name", "Unknown"),
                             "current_path": file_info.get("path", ""),
                             "errors": error_count,
                         }
                     )
 
-                if file_count % 50 == 0:
+                if processed_count % 50 == 0:
                     logger.info(
-                        f"Processed {file_count} files ({folder_count} folders, {file_count - folder_count} documents)..."
+                        f"Processed {processed_count} new files (total seen: {file_count}, folders: {folder_count}, duplicates: {duplicate_count})..."
                     )
 
         except Exception as error:
@@ -400,8 +443,8 @@ class GoogleDriveProcessor:
             error_count += 1
             return False
 
-        if not files_data:
-            logger.warning("No files found in Google Drive")
+        if not files_data and not existing_data:
+            logger.warning("No files found in Google Drive and no existing data")
             return False
 
         # Final progress update
@@ -411,6 +454,9 @@ class GoogleDriveProcessor:
                     "total_files": file_count,
                     "folders": folder_count,
                     "documents": file_count - folder_count,
+                    "processed": processed_count,
+                    "skipped": skipped_count,
+                    "duplicates": duplicate_count,
                     "current_file": "Saving to Parquet...",
                     "current_path": "",
                     "errors": error_count,
@@ -418,13 +464,15 @@ class GoogleDriveProcessor:
                 }
             )
 
+        # Combine existing data with new data
+        all_data = existing_data + files_data
+        
         # Create DataFrame and save as Parquet
-        df = pd.DataFrame(files_data)
-        output_path = DATA_DIR / output_file
-
+        df = pd.DataFrame(all_data)
+        
         try:
             df.to_parquet(output_path, index=False)
-            logger.info(f"Successfully created index with {len(files_data)} files")
+            logger.info(f"Successfully updated index: {len(existing_data)} existing + {len(files_data)} new = {len(all_data)} total files")
             logger.info(f"Index saved to: {output_path}")
             return True
 
@@ -461,3 +509,20 @@ class GoogleDriveProcessor:
         except Exception as error:
             logger.error(f"Error creating summary: {error}")
             return {"error": str(error)}
+    
+    def _calculate_file_hash(self, file_info: Dict[str, Any]) -> str:
+        """Calculate a hash for the file based on its metadata."""
+        # Use file ID, name, size, and modified time to create a unique hash
+        hash_data = {
+            'file_id': file_info.get('file_id', ''),
+            'name': file_info.get('name', ''),
+            'size': file_info.get('size', 0),
+            'modified_time': file_info.get('modified_time', ''),
+            'mime_type': file_info.get('mime_type', '')
+        }
+        
+        # Create a consistent string representation
+        hash_string = json.dumps(hash_data, sort_keys=True)
+        
+        # Generate SHA-256 hash
+        return hashlib.sha256(hash_string.encode('utf-8')).hexdigest()
