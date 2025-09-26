@@ -11,7 +11,7 @@ RAW_DIR = DATA_DIR / "raw"
 # Gutenberg texts
 GUTENBERG_URLS = [
     "https://www.gutenberg.org/cache/epub/32154/pg32154.txt",
-    "https://www.gutenberg.org/cache/epub/31547/pg31547.txt"
+    "https://www.gutenberg.org/cache/epub/31547/pg31547.txt",
 ]
 
 # Model settings
@@ -23,11 +23,11 @@ CHUNK_OVERLAP = 50
 GOOGLE_DRIVE_INDEX_FILE = "google_drive_index.parquet"
 SUPPORTED_MIME_TYPES = [
     "text/plain",
-    "text/csv", 
+    "text/csv",
     "application/json",
     "application/vnd.google-apps.document",
     "application/vnd.google-apps.spreadsheet",
-    "application/vnd.google-apps.presentation"
+    "application/vnd.google-apps.presentation",
 ]
 
 # BookWyrm API settings
