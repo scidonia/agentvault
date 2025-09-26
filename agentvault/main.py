@@ -224,25 +224,44 @@ def index_drive(
 ):
     """Index Google Drive files and create searchable database with detailed progress tracking."""
     
-    print("🚀 FUNCTION CALLED: index_drive")
-    console.print("🚀 Starting index-drive command", style="bold green")
-    console.print(f"📁 Output file: {output_file}", style="dim")
-    console.print(f"🔄 Force: {force}", style="dim")
-    console.print(f"📢 Verbose: {verbose}", style="dim")
-    
-    output_path = DATA_DIR / output_file
-    console.print(f"📂 Full output path: {output_path}", style="dim")
+    try:
+        print("🚀 FUNCTION CALLED: index_drive")
+        print(f"📁 Output file: {output_file}")
+        print(f"🔄 Force: {force}")
+        print(f"📢 Verbose: {verbose}")
+        
+        console.print("🚀 Starting index-drive command", style="bold green")
+        console.print(f"📁 Output file: {output_file}", style="dim")
+        console.print(f"🔄 Force: {force}", style="dim")
+        console.print(f"📢 Verbose: {verbose}", style="dim")
+        
+        print("📂 Creating output path...")
+        output_path = DATA_DIR / output_file
+        print(f"📂 Output path created: {output_path}")
+        console.print(f"📂 Full output path: {output_path}", style="dim")
 
-    # Check if index already exists
-    if not force and output_path.exists():
-        console.print(f"⚠️  Index file {output_file} already exists", style="yellow")
-        if not typer.confirm(
-            f"Index file {output_file} already exists. Reindex anyway?"
-        ):
-            console.print("❌ Indexing cancelled", style="yellow")
-            raise typer.Exit()
+        print("🔍 Checking if index exists...")
+        # Check if index already exists
+        if not force and output_path.exists():
+            print("⚠️  Index file exists, asking user...")
+            console.print(f"⚠️  Index file {output_file} already exists", style="yellow")
+            if not typer.confirm(
+                f"Index file {output_file} already exists. Reindex anyway?"
+            ):
+                console.print("❌ Indexing cancelled", style="yellow")
+                raise typer.Exit()
 
-    console.print(Panel.fit("🔍 Starting Google Drive Indexing", style="bold blue"))
+        print("🎨 Creating panel...")
+        console.print(Panel.fit("🔍 Starting Google Drive Indexing", style="bold blue"))
+        print("✅ Panel created successfully")
+        
+    except Exception as e:
+        print(f"💥 EARLY ERROR: {e}")
+        print(f"💥 ERROR TYPE: {type(e)}")
+        import traceback
+        print(f"💥 TRACEBACK: {traceback.format_exc()}")
+        console.print(f"💥 Error in index_drive: {e}", style="red")
+        raise
 
     # Enhanced progress tracking
     with Progress(
