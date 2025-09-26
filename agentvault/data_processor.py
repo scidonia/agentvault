@@ -7,7 +7,7 @@ from typing import List, Dict
 import json
 from urllib.parse import urlparse
 
-from bookwyrm import BookWyrm
+from bookwyrm.client import BookWyrmClient
 from .config import GUTENBERG_URLS, RAW_DIR, PROCESSED_DIR, CHUNK_SIZE, CHUNK_OVERLAP
 
 
@@ -15,7 +15,7 @@ class GutenbergProcessor:
     """Process Gutenberg texts for RAG application."""
     
     def __init__(self):
-        self.bookwyrm = BookWyrm()
+        self.bookwyrm = BookWyrmClient()
         
     def download_text(self, url: str) -> str:
         """Download text from Gutenberg URL."""
