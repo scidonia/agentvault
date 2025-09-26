@@ -7,14 +7,20 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Iterator
 import logging
 
-import pandas as pd
-import numpy as np
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-import requests
+try:
+    import pandas as pd
+    import numpy as np
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
+    import requests
+except ImportError as e:
+    print(f"❌ Missing required dependency: {e}")
+    print("Please install Google API dependencies:")
+    print("  uv add google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client pyarrow")
+    raise
 
 from .config import DATA_DIR, EMBEDDING_MODEL
 
