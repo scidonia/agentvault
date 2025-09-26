@@ -6,9 +6,9 @@ from typing import List, Dict, Any, TypedDict
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-from langgraph.graph import Graph, StateGraph, END
+from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage, AIMessage
-from bookwyrm import BookWyrm
+from bookwyrm.client import BookWyrmClient
 
 from .config import PROCESSED_DIR
 
@@ -26,7 +26,7 @@ class RAGAgent:
     """RAG Agent using BookWyrm and LangGraph."""
     
     def __init__(self):
-        self.bookwyrm = BookWyrm()
+        self.bookwyrm = BookWyrmClient()
         self.knowledge_base = self._load_knowledge_base()
         self.graph = self._create_graph()
     
