@@ -256,7 +256,7 @@ class GoogleDriveProcessor:
                 
                 yield file_info
     
-    def process_drive(self, output_file: str = "google_drive_index.parquet") -> bool:
+    def process_drive(self, output_file: str = "google_drive_index.parquet", progress_callback=None) -> bool:
         """Process entire Google Drive and create Parquet index."""
         if not self.authenticate():
             logger.error("Failed to authenticate with Google Drive")
@@ -267,22 +267,51 @@ class GoogleDriveProcessor:
         # Collect all file information
         files_data = []
         file_count = 0
+        folder_count = 0
+        error_count = 0
         
         try:
             for file_info in self.traverse_drive():
                 files_data.append(file_info)
                 file_count += 1
                 
-                if file_count % 100 == 0:
-                    logger.info(f"Processed {file_count} files...")
+                if file_info.get('is_folder', False):
+                    folder_count += 1
+                
+                # Call progress callback if provided
+                if progress_callback:
+                    progress_callback({
+                        'total_files': file_count,
+                        'folders': folder_count,
+                        'documents': file_count - folder_count,
+                        'current_file': file_info.get('name', 'Unknown'),
+                        'current_path': file_info.get('path', ''),
+                        'errors': error_count
+                    })
+                
+                if file_count % 50 == 0:
+                    logger.info(f"Processed {file_count} files ({folder_count} folders, {file_count - folder_count} documents)...")
         
         except Exception as error:
             logger.error(f"Error during drive traversal: {error}")
+            error_count += 1
             return False
         
         if not files_data:
             logger.warning("No files found in Google Drive")
             return False
+        
+        # Final progress update
+        if progress_callback:
+            progress_callback({
+                'total_files': file_count,
+                'folders': folder_count,
+                'documents': file_count - folder_count,
+                'current_file': 'Saving to Parquet...',
+                'current_path': '',
+                'errors': error_count,
+                'phase': 'saving'
+            })
         
         # Create DataFrame and save as Parquet
         df = pd.DataFrame(files_data)

@@ -187,9 +187,10 @@ def summary():
 @app.command()
 def index_drive(
     output_file: str = typer.Option(GOOGLE_DRIVE_INDEX_FILE, "--output", "-o", help="Output parquet file name"),
-    force: bool = typer.Option(False, "--force", "-f", help="Force reindexing even if index exists")
+    force: bool = typer.Option(False, "--force", "-f", help="Force reindexing even if index exists"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress information")
 ):
-    """Index Google Drive files and create searchable database."""
+    """Index Google Drive files and create searchable database with detailed progress tracking."""
     
     output_path = DATA_DIR / output_file
     
@@ -201,42 +202,110 @@ def index_drive(
     
     console.print(Panel.fit("🔍 Starting Google Drive Indexing", style="bold blue"))
     
+    # Enhanced progress tracking
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
+        BarColumn(bar_width=None),
+        TaskProgressColumn(),
+        TextColumn("[bold blue]{task.fields[files]} files"),
+        TextColumn("[bold green]{task.fields[folders]} folders"),
+        TextColumn("[bold yellow]{task.fields[docs]} docs"),
         console=console,
-        transient=True
+        transient=False
     ) as progress:
         
-        task = progress.add_task("Authenticating with Google Drive...", total=None)
+        # Authentication task
+        auth_task = progress.add_task(
+            "🔐 Authenticating with Google Drive...", 
+            total=100,
+            files=0, folders=0, docs=0
+        )
         
         try:
             processor = GoogleDriveProcessor()
             
-            progress.update(task, description="🔐 Authenticating...")
             if not processor.authenticate():
                 console.print("❌ Failed to authenticate with Google Drive", style="red")
                 console.print("Please ensure you have valid credentials in the secret/ directory", style="yellow")
                 raise typer.Exit(1)
             
-            progress.update(task, description="📁 Scanning Drive structure...")
-            success = processor.process_drive(output_file)
+            progress.update(auth_task, advance=100, description="✅ Authenticated successfully")
+            
+            # Indexing task
+            index_task = progress.add_task(
+                "📁 Scanning Drive structure...", 
+                total=None,
+                files=0, folders=0, docs=0
+            )
+            
+            # Progress callback function
+            def update_progress(stats):
+                phase = stats.get('phase', 'scanning')
+                current_file = stats.get('current_file', '')
+                current_path = stats.get('current_path', '')
+                
+                if phase == 'saving':
+                    description = "💾 Saving index to Parquet file..."
+                else:
+                    if verbose and current_file:
+                        description = f"📄 Processing: {current_file}"
+                    else:
+                        description = f"📁 Scanning files... ({stats['total_files']} processed)"
+                
+                progress.update(
+                    index_task,
+                    description=description,
+                    files=stats['total_files'],
+                    folders=stats['folders'],
+                    docs=stats['documents']
+                )
+                
+                # Show current path in verbose mode
+                if verbose and current_path and phase != 'saving':
+                    console.print(f"  📂 {current_path}", style="dim")
+            
+            success = processor.process_drive(output_file, progress_callback=update_progress)
             
             if not success:
                 console.print("❌ Failed to index Google Drive", style="red")
                 raise typer.Exit(1)
+            
+            progress.update(index_task, description="✅ Indexing completed successfully")
                 
+        except KeyboardInterrupt:
+            console.print("\n⚠️  Indexing interrupted by user", style="yellow")
+            raise typer.Exit(1)
         except Exception as e:
             console.print(f"❌ Error during indexing: {e}", style="red")
             raise typer.Exit(1)
     
     console.print("✅ Google Drive indexing completed!", style="green bold")
     
-    # Show summary
+    # Show detailed summary
     summary = processor.create_summary(output_file)
     if "error" not in summary:
-        console.print(f"📊 Indexed {summary['total_documents']} documents in {summary['total_folders']} folders")
-        console.print(f"💾 Total size: {summary['total_size_bytes']:,} bytes")
+        # Create a beautiful summary table
+        summary_table = Table(title="📊 Indexing Results", show_header=True, header_style="bold magenta")
+        summary_table.add_column("Metric", style="cyan")
+        summary_table.add_column("Value", justify="right", style="green")
+        
+        summary_table.add_row("📁 Total Folders", f"{summary['total_folders']:,}")
+        summary_table.add_row("📄 Total Documents", f"{summary['total_documents']:,}")
+        summary_table.add_row("💾 Total Size", f"{summary['total_size_bytes']:,} bytes")
+        summary_table.add_row("📂 Categories Found", f"{len(summary['categories'])}")
+        summary_table.add_row("🗂️  File Types", f"{len(summary['mime_types'])}")
+        
+        console.print(summary_table)
+        
+        # Show top categories
+        if summary['categories']:
+            console.print("\n🏷️  [bold]Top File Categories:[/bold]")
+            for category, count in list(summary['categories'].items())[:5]:
+                console.print(f"  • [cyan]{category}[/cyan]: [green]{count}[/green] files")
+        
+        console.print(f"\n💡 Use [bold]agentvault drive-summary[/bold] to see detailed statistics")
+        console.print(f"📁 Index saved to: [bold blue]{output_path}[/bold blue]")
 
 
 @app.command()
