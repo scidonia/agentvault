@@ -583,7 +583,10 @@ def main():
 def test():
     """Test command to verify typer is working."""
     print("TEST: Function called!")
+    print("TEST: About to call console.print")
     console.print("✅ Test command works!", style="green")
+    print("TEST: console.print completed")
+    return "test completed"
 
 
 @app.command()
@@ -596,7 +599,10 @@ def version():
 
 
 print("DEBUG: Command registration complete")
+print(f"DEBUG: App commands: {[cmd.name for cmd in app.registered_commands.values()]}")
 
 if __name__ == "__main__":
     print("DEBUG: Running app directly")
     app()
+else:
+    print("DEBUG: Module imported, not running directly")
