@@ -224,25 +224,40 @@ def index_drive(
 ):
     """Index Google Drive files and create searchable database with detailed progress tracking."""
     
+    print("DEBUG 1: Function entry")
+    
     try:
+        print("DEBUG 2: Inside try block")
         print("🚀 FUNCTION CALLED: index_drive")
         print(f"📁 Output file: {output_file}")
         print(f"🔄 Force: {force}")
         print(f"📢 Verbose: {verbose}")
         
+        print("DEBUG 3: About to call console.print")
         console.print("🚀 Starting index-drive command", style="bold green")
+        print("DEBUG 4: First console.print completed")
+        
         console.print(f"📁 Output file: {output_file}", style="dim")
+        print("DEBUG 5: Second console.print completed")
+        
         console.print(f"🔄 Force: {force}", style="dim")
         console.print(f"📢 Verbose: {verbose}", style="dim")
+        print("DEBUG 6: All initial console.prints completed")
         
         print("📂 Creating output path...")
         output_path = DATA_DIR / output_file
         print(f"📂 Output path created: {output_path}")
+        print("DEBUG 7: Output path created")
+        
         console.print(f"📂 Full output path: {output_path}", style="dim")
+        print("DEBUG 8: Output path console.print completed")
 
         print("🔍 Checking if index exists...")
+        print("DEBUG 9: About to check if file exists")
+        
         # Check if index already exists
         if not force and output_path.exists():
+            print("DEBUG 10: File exists, asking user")
             print("⚠️  Index file exists, asking user...")
             console.print(f"⚠️  Index file {output_file} already exists", style="yellow")
             if not typer.confirm(
@@ -250,10 +265,14 @@ def index_drive(
             ):
                 console.print("❌ Indexing cancelled", style="yellow")
                 raise typer.Exit()
+        else:
+            print("DEBUG 11: File doesn't exist or force=True")
 
         print("🎨 Creating panel...")
+        print("DEBUG 12: About to create panel")
         console.print(Panel.fit("🔍 Starting Google Drive Indexing", style="bold blue"))
         print("✅ Panel created successfully")
+        print("DEBUG 13: Panel creation completed")
         
     except Exception as e:
         print(f"💥 EARLY ERROR: {e}")
@@ -263,6 +282,8 @@ def index_drive(
         console.print(f"💥 Error in index_drive: {e}", style="red")
         raise
 
+    print("DEBUG 14: About to create Progress context")
+    
     # Enhanced progress tracking
     with Progress(
         SpinnerColumn(),
@@ -275,7 +296,11 @@ def index_drive(
         console=console,
         transient=False,
     ) as progress:
+        
+        print("DEBUG 15: Inside Progress context")
 
+        print("DEBUG 16: About to add auth task")
+        
         # Authentication task
         auth_task = progress.add_task(
             "🔐 Authenticating with Google Drive...",
@@ -284,10 +309,15 @@ def index_drive(
             folders=0,
             docs=0,
         )
+        
+        print("DEBUG 17: Auth task added")
 
         try:
+            print("DEBUG 18: Inside progress try block")
             console.print("🔧 Creating GoogleDriveProcessor...", style="dim")
+            print("DEBUG 19: About to create GoogleDriveProcessor")
             processor = GoogleDriveProcessor()
+            print("DEBUG 20: GoogleDriveProcessor created")
 
             # Enhanced authentication with detailed feedback
             def auth_progress_callback(message: str):
