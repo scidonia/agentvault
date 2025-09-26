@@ -413,7 +413,6 @@ def query(
 
 @app.callback()
 def main(
-    ctx: typer.Context,
     version: Optional[bool] = typer.Option(None, "--version", "-v", help="Show version and exit")
 ):
     """
@@ -424,10 +423,6 @@ def main(
     if version:
         console.print("agentvault version 0.1.0", style="bold blue")
         raise typer.Exit()
-    
-    # If no command is provided, default to chat
-    if ctx.invoked_subcommand is None:
-        ctx.invoke(chat)
 
 
 if __name__ == "__main__":
