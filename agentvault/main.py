@@ -599,7 +599,7 @@ def version():
 
 
 print("DEBUG: Command registration complete")
-print(f"DEBUG: App commands: {[cmd.name for cmd in app.registered_commands.values()]}")
+print(f"DEBUG: App commands: {[cmd.name for cmd in app.registered_commands]}")
 
 if __name__ == "__main__":
     print("DEBUG: Running app directly")
