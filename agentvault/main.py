@@ -580,6 +580,13 @@ def main():
 
 
 @app.command()
+def test():
+    """Test command to verify typer is working."""
+    print("TEST: Function called!")
+    console.print("✅ Test command works!", style="green")
+
+
+@app.command()
 def version():
     """Show version information."""
     console.print("🤖 agentvault version 0.1.0", style="bold blue")
