@@ -32,44 +32,104 @@ class GoogleDriveProcessor:
         self.credentials = None
         self.bookwyrm_api_url = "https://api.bookwyrm.ai/classify"  # Placeholder URL
 
-    def authenticate(self) -> bool:
-        """Authenticate with Google Drive API."""
+    def authenticate(self, progress_callback=None) -> bool:
+        """Authenticate with Google Drive API with detailed feedback."""
         creds = None
         token_path = Path("secret/token.pickle")
+        
+        def update_progress(message: str):
+            if progress_callback:
+                progress_callback(message)
+            logger.info(message)
+
+        update_progress("🔍 Checking for existing authentication...")
 
         # Load existing token
         if token_path.exists():
-            with open(token_path, "rb") as token:
-                creds = pickle.load(token)
+            update_progress("📄 Found existing token file, loading...")
+            try:
+                with open(token_path, "rb") as token:
+                    creds = pickle.load(token)
+                update_progress("✅ Successfully loaded existing credentials")
+            except Exception as e:
+                update_progress(f"⚠️  Error loading token file: {e}")
+                creds = None
 
         # If no valid credentials, get new ones
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
+                update_progress("🔄 Refreshing expired credentials...")
+                try:
+                    creds.refresh(Request())
+                    update_progress("✅ Successfully refreshed credentials")
+                except Exception as e:
+                    update_progress(f"❌ Failed to refresh credentials: {e}")
+                    creds = None
+            
+            if not creds or not creds.valid:
+                update_progress("🔑 Need new credentials, looking for client secrets...")
+                
                 # Find first JSON credentials file in secret directory
                 secret_dir = Path("secret")
+                if not secret_dir.exists():
+                    update_progress("❌ Secret directory doesn't exist")
+                    logger.error("Secret directory not found")
+                    return False
+                
                 creds_files = list(secret_dir.glob("*.json"))
-
+                
                 if not creds_files:
+                    update_progress("❌ No JSON credentials file found in secret/ directory")
+                    update_progress("💡 Please download your Google Drive API credentials and place them in the secret/ folder")
+                    update_progress("📖 Visit: https://console.cloud.google.com/apis/credentials")
                     logger.error("No credentials file found in secret/ directory")
                     return False
 
                 creds_file = creds_files[0]
-                logger.info(f"Using credentials file: {creds_file}")
-
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    str(creds_file), SCOPES
-                )
-                creds = flow.run_local_server(port=0)
+                update_progress(f"📋 Using credentials file: {creds_file.name}")
+                
+                try:
+                    update_progress("🌐 Starting OAuth2 flow...")
+                    update_progress("🔗 Your browser will open for authentication")
+                    
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        str(creds_file), SCOPES
+                    )
+                    creds = flow.run_local_server(port=0)
+                    update_progress("✅ Authentication successful!")
+                    
+                except Exception as e:
+                    update_progress(f"❌ Authentication failed: {e}")
+                    logger.error(f"OAuth flow failed: {e}")
+                    return False
 
             # Save credentials for next run
-            with open(token_path, "wb") as token:
-                pickle.dump(creds, token)
+            update_progress("💾 Saving credentials for future use...")
+            try:
+                with open(token_path, "wb") as token:
+                    pickle.dump(creds, token)
+                update_progress("✅ Credentials saved successfully")
+            except Exception as e:
+                update_progress(f"⚠️  Warning: Could not save credentials: {e}")
 
-        self.credentials = creds
-        self.service = build("drive", "v3", credentials=creds)
-        return True
+        update_progress("🔧 Building Google Drive service...")
+        try:
+            self.credentials = creds
+            self.service = build("drive", "v3", credentials=creds)
+            update_progress("✅ Google Drive service ready!")
+            
+            # Test the connection
+            update_progress("🧪 Testing connection...")
+            about = self.service.about().get(fields="user").execute()
+            user_email = about.get('user', {}).get('emailAddress', 'Unknown')
+            update_progress(f"👤 Connected as: {user_email}")
+            
+            return True
+            
+        except Exception as e:
+            update_progress(f"❌ Failed to build Google Drive service: {e}")
+            logger.error(f"Service build failed: {e}")
+            return False
 
     def list_files(
         self, folder_id: str = "root", query: str = None

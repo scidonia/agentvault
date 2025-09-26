@@ -261,14 +261,22 @@ def index_drive(
         try:
             processor = GoogleDriveProcessor()
 
-            if not processor.authenticate():
+            # Enhanced authentication with detailed feedback
+            def auth_progress_callback(message: str):
+                progress.update(auth_task, description=message)
+                if verbose:
+                    console.print(f"  {message}", style="dim")
+
+            if not processor.authenticate(progress_callback=auth_progress_callback):
                 console.print(
                     "❌ Failed to authenticate with Google Drive", style="red"
                 )
-                console.print(
-                    "Please ensure you have valid credentials in the secret/ directory",
-                    style="yellow",
-                )
+                console.print("\n📋 [bold]Authentication Setup Instructions:[/bold]", style="yellow")
+                console.print("1. Go to https://console.cloud.google.com/", style="yellow")
+                console.print("2. Create a new project or select existing one", style="yellow")
+                console.print("3. Enable the Google Drive API", style="yellow")
+                console.print("4. Create credentials (OAuth 2.0 Client ID)", style="yellow")
+                console.print("5. Download the JSON file and place it in the secret/ directory", style="yellow")
                 raise typer.Exit(1)
 
             progress.update(
