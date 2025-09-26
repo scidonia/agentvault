@@ -4,9 +4,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-print("🔧 Loading typer...")
 import typer
-print("🔧 Loading rich...")
 from rich.console import Console
 from rich.progress import (
     Progress,
@@ -20,30 +18,10 @@ from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
 
-print("🔧 Loading processors...")
-try:
-    from .data_processor import GutenbergProcessor
-    print("✅ GutenbergProcessor loaded")
-except Exception as e:
-    print(f"❌ Error loading GutenbergProcessor: {e}")
-
-try:
-    from .google_drive_processor import GoogleDriveProcessor
-    print("✅ GoogleDriveProcessor loaded")
-except Exception as e:
-    print(f"❌ Error loading GoogleDriveProcessor: {e}")
-
-try:
-    from .rag_agent import RAGAgent
-    print("✅ RAGAgent loaded")
-except Exception as e:
-    print(f"❌ Error loading RAGAgent: {e}")
-
-try:
-    from .config import PROCESSED_DIR, DATA_DIR, GOOGLE_DRIVE_INDEX_FILE
-    print("✅ Config loaded")
-except Exception as e:
-    print(f"❌ Error loading config: {e}")
+from .data_processor import GutenbergProcessor
+from .google_drive_processor import GoogleDriveProcessor
+from .rag_agent import RAGAgent
+from .config import PROCESSED_DIR, DATA_DIR, GOOGLE_DRIVE_INDEX_FILE
 
 app = typer.Typer(
     name="agentvault",
@@ -246,33 +224,25 @@ def index_drive(
 ):
     """Index Google Drive files and create searchable database with detailed progress tracking."""
     
-    try:
-        console.print("🚀 Starting index-drive command", style="bold green")
-        console.print(f"📁 Output file: {output_file}", style="dim")
-        console.print(f"🔄 Force: {force}", style="dim")
-        console.print(f"📢 Verbose: {verbose}", style="dim")
-        
-        output_path = DATA_DIR / output_file
-        console.print(f"📂 Full output path: {output_path}", style="dim")
+    print("🚀 FUNCTION CALLED: index_drive")
+    console.print("🚀 Starting index-drive command", style="bold green")
+    console.print(f"📁 Output file: {output_file}", style="dim")
+    console.print(f"🔄 Force: {force}", style="dim")
+    console.print(f"📢 Verbose: {verbose}", style="dim")
+    
+    output_path = DATA_DIR / output_file
+    console.print(f"📂 Full output path: {output_path}", style="dim")
 
-        # Check if index already exists
-        if not force and output_path.exists():
-            console.print(f"⚠️  Index file {output_file} already exists", style="yellow")
-            if not typer.confirm(
-                f"Index file {output_file} already exists. Reindex anyway?"
-            ):
-                console.print("❌ Indexing cancelled", style="yellow")
-                raise typer.Exit()
+    # Check if index already exists
+    if not force and output_path.exists():
+        console.print(f"⚠️  Index file {output_file} already exists", style="yellow")
+        if not typer.confirm(
+            f"Index file {output_file} already exists. Reindex anyway?"
+        ):
+            console.print("❌ Indexing cancelled", style="yellow")
+            raise typer.Exit()
 
-        console.print(Panel.fit("🔍 Starting Google Drive Indexing", style="bold blue"))
-        console.print("🐛 Debug: Command started successfully", style="dim")
-        
-    except Exception as e:
-        console.print(f"💥 Early error in index_drive: {e}", style="red")
-        console.print(f"💥 Error type: {type(e)}", style="red")
-        import traceback
-        console.print(f"💥 Traceback: {traceback.format_exc()}", style="red")
-        raise
+    console.print(Panel.fit("🔍 Starting Google Drive Indexing", style="bold blue"))
 
     # Enhanced progress tracking
     with Progress(
