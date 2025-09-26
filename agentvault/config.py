@@ -19,6 +19,20 @@ EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 CHUNK_SIZE = 512
 CHUNK_OVERLAP = 50
 
+# Google Drive settings
+GOOGLE_DRIVE_INDEX_FILE = "google_drive_index.parquet"
+SUPPORTED_MIME_TYPES = [
+    "text/plain",
+    "text/csv", 
+    "application/json",
+    "application/vnd.google-apps.document",
+    "application/vnd.google-apps.spreadsheet",
+    "application/vnd.google-apps.presentation"
+]
+
+# BookWyrm API settings
+BOOKWYRM_API_URL = "https://api.bookwyrm.ai/classify"  # Placeholder
+
 # Create directories
 DATA_DIR.mkdir(exist_ok=True)
 PROCESSED_DIR.mkdir(exist_ok=True)

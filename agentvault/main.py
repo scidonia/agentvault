@@ -13,8 +13,9 @@ from rich.table import Table
 from rich.text import Text
 
 from .data_processor import GutenbergProcessor
+from .google_drive_processor import GoogleDriveProcessor
 from .rag_agent import RAGAgent
-from .config import PROCESSED_DIR
+from .config import PROCESSED_DIR, DATA_DIR, GOOGLE_DRIVE_INDEX_FILE
 
 app = typer.Typer(
     name="agentvault",
@@ -181,6 +182,118 @@ def summary():
         )
     
     console.print(table)
+
+
+@app.command()
+def index_drive(
+    output_file: str = typer.Option(GOOGLE_DRIVE_INDEX_FILE, "--output", "-o", help="Output parquet file name"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force reindexing even if index exists")
+):
+    """Index Google Drive files and create searchable database."""
+    
+    output_path = DATA_DIR / output_file
+    
+    # Check if index already exists
+    if not force and output_path.exists():
+        if not typer.confirm(f"Index file {output_file} already exists. Reindex anyway?"):
+            console.print("❌ Indexing cancelled", style="yellow")
+            raise typer.Exit()
+    
+    console.print(Panel.fit("🔍 Starting Google Drive Indexing", style="bold blue"))
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=True
+    ) as progress:
+        
+        task = progress.add_task("Authenticating with Google Drive...", total=None)
+        
+        try:
+            processor = GoogleDriveProcessor()
+            
+            progress.update(task, description="🔐 Authenticating...")
+            if not processor.authenticate():
+                console.print("❌ Failed to authenticate with Google Drive", style="red")
+                console.print("Please ensure you have valid credentials in the secret/ directory", style="yellow")
+                raise typer.Exit(1)
+            
+            progress.update(task, description="📁 Scanning Drive structure...")
+            success = processor.process_drive(output_file)
+            
+            if not success:
+                console.print("❌ Failed to index Google Drive", style="red")
+                raise typer.Exit(1)
+                
+        except Exception as e:
+            console.print(f"❌ Error during indexing: {e}", style="red")
+            raise typer.Exit(1)
+    
+    console.print("✅ Google Drive indexing completed!", style="green bold")
+    
+    # Show summary
+    summary = processor.create_summary(output_file)
+    if "error" not in summary:
+        console.print(f"📊 Indexed {summary['total_documents']} documents in {summary['total_folders']} folders")
+        console.print(f"💾 Total size: {summary['total_size_bytes']:,} bytes")
+
+
+@app.command()
+def drive_summary(
+    index_file: str = typer.Option(GOOGLE_DRIVE_INDEX_FILE, "--file", "-f", help="Index file to summarize")
+):
+    """Show summary of Google Drive index."""
+    
+    index_path = DATA_DIR / index_file
+    if not index_path.exists():
+        console.print(f"❌ Index file {index_file} not found.", style="red")
+        console.print("Please run Google Drive indexing first:", style="yellow")
+        console.print("  [bold]agentvault index-drive[/bold]")
+        raise typer.Exit(1)
+    
+    processor = GoogleDriveProcessor()
+    summary = processor.create_summary(index_file)
+    
+    if "error" in summary:
+        console.print(f"❌ Error reading index: {summary['error']}", style="red")
+        raise typer.Exit(1)
+    
+    # Create summary panel
+    summary_text = f"""
+📁 Total folders: [bold blue]{summary['total_folders']}[/bold blue]
+📄 Total documents: [bold green]{summary['total_documents']}[/bold green]  
+💾 Total size: [bold yellow]{summary['total_size_bytes']:,} bytes[/bold yellow]
+    """.strip()
+    
+    console.print(Panel(summary_text, title="📊 Google Drive Index Summary", border_style="blue"))
+    
+    # Categories table
+    if summary['categories']:
+        cat_table = Table(title="📂 File Categories", show_header=True, header_style="bold magenta")
+        cat_table.add_column("Category", style="cyan")
+        cat_table.add_column("Count", justify="right", style="green")
+        
+        for category, count in summary['categories'].items():
+            cat_table.add_row(category, str(count))
+        
+        console.print(cat_table)
+    
+    # Largest files table
+    if summary['largest_files']:
+        files_table = Table(title="📈 Largest Files", show_header=True, header_style="bold magenta")
+        files_table.add_column("Name", style="cyan", max_width=40)
+        files_table.add_column("Size", justify="right", style="yellow")
+        files_table.add_column("Category", style="green")
+        
+        for file_info in summary['largest_files']:
+            files_table.add_row(
+                file_info['name'],
+                f"{file_info['size']:,} bytes",
+                file_info['category']
+            )
+        
+        console.print(files_table)
 
 
 @app.command()
