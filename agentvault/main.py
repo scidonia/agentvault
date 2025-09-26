@@ -235,6 +235,7 @@ def index_drive(
             raise typer.Exit()
 
     console.print(Panel.fit("🔍 Starting Google Drive Indexing", style="bold blue"))
+    console.print("🐛 Debug: Command started successfully", style="dim")
 
     # Enhanced progress tracking
     with Progress(
@@ -259,6 +260,7 @@ def index_drive(
         )
 
         try:
+            console.print("🔧 Creating GoogleDriveProcessor...", style="dim")
             processor = GoogleDriveProcessor()
 
             # Enhanced authentication with detailed feedback
@@ -267,7 +269,11 @@ def index_drive(
                 if verbose:
                     console.print(f"  {message}", style="dim")
 
-            if not processor.authenticate(progress_callback=auth_progress_callback):
+            console.print("🔐 Starting authentication...", style="dim")
+            auth_result = processor.authenticate(progress_callback=auth_progress_callback)
+            console.print(f"🔍 Authentication result: {auth_result}", style="dim")
+            
+            if not auth_result:
                 console.print(
                     "❌ Failed to authenticate with Google Drive", style="red"
                 )
@@ -316,9 +322,11 @@ def index_drive(
                 if verbose and current_path and phase != "saving":
                     console.print(f"  📂 {current_path}", style="dim")
 
+            console.print("📁 Starting drive processing...", style="dim")
             success = processor.process_drive(
                 output_file, progress_callback=update_progress
             )
+            console.print(f"📊 Drive processing result: {success}", style="dim")
 
             if not success:
                 console.print("❌ Failed to index Google Drive", style="red")
