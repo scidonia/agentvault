@@ -23,15 +23,12 @@ from .google_drive_processor import GoogleDriveProcessor
 from .rag_agent import RAGAgent
 from .config import PROCESSED_DIR, DATA_DIR, GOOGLE_DRIVE_INDEX_FILE
 
-print("DEBUG: Creating typer app...")
 app = typer.Typer(
     name="agentvault",
     help="BookWyrm RAG Agent - Ask questions about literary texts",
     rich_markup_mode="rich",
 )
-print("DEBUG: Typer app created")
 console = Console()
-print("DEBUG: Console created")
 
 
 @app.command("process")
@@ -213,8 +210,6 @@ def summary():
     console.print(table)
 
 
-print("DEBUG: Registering index_drive command...")
-
 @app.command("index-drive")
 def index_drive(
     output_file: str = typer.Option(
@@ -229,65 +224,17 @@ def index_drive(
 ):
     """Index Google Drive files and create searchable database with detailed progress tracking."""
     
-    print("DEBUG 1: Function entry - index_drive called!")
-    
-    try:
-        print("DEBUG 2: Inside try block")
-        print("🚀 FUNCTION CALLED: index_drive")
-        print(f"📁 Output file: {output_file}")
-        print(f"🔄 Force: {force}")
-        print(f"📢 Verbose: {verbose}")
-        
-        print("DEBUG 3: About to call console.print")
-        console.print("🚀 Starting index-drive command", style="bold green")
-        print("DEBUG 4: First console.print completed")
-        
-        console.print(f"📁 Output file: {output_file}", style="dim")
-        print("DEBUG 5: Second console.print completed")
-        
-        console.print(f"🔄 Force: {force}", style="dim")
-        console.print(f"📢 Verbose: {verbose}", style="dim")
-        print("DEBUG 6: All initial console.prints completed")
-        
-        print("📂 Creating output path...")
-        output_path = DATA_DIR / output_file
-        print(f"📂 Output path created: {output_path}")
-        print("DEBUG 7: Output path created")
-        
-        console.print(f"📂 Full output path: {output_path}", style="dim")
-        print("DEBUG 8: Output path console.print completed")
+    output_path = DATA_DIR / output_file
 
-        print("🔍 Checking if index exists...")
-        print("DEBUG 9: About to check if file exists")
-        
-        # Check if index already exists
-        if not force and output_path.exists():
-            print("DEBUG 10: File exists, asking user")
-            print("⚠️  Index file exists, asking user...")
-            console.print(f"⚠️  Index file {output_file} already exists", style="yellow")
-            if not typer.confirm(
-                f"Index file {output_file} already exists. Reindex anyway?"
-            ):
-                console.print("❌ Indexing cancelled", style="yellow")
-                raise typer.Exit()
-        else:
-            print("DEBUG 11: File doesn't exist or force=True")
+    # Check if index already exists
+    if not force and output_path.exists():
+        if not typer.confirm(
+            f"Index file {output_file} already exists. Reindex anyway?"
+        ):
+            console.print("❌ Indexing cancelled", style="yellow")
+            raise typer.Exit()
 
-        print("🎨 Creating panel...")
-        print("DEBUG 12: About to create panel")
-        console.print(Panel.fit("🔍 Starting Google Drive Indexing", style="bold blue"))
-        print("✅ Panel created successfully")
-        print("DEBUG 13: Panel creation completed")
-        
-    except Exception as e:
-        print(f"💥 EARLY ERROR: {e}")
-        print(f"💥 ERROR TYPE: {type(e)}")
-        import traceback
-        print(f"💥 TRACEBACK: {traceback.format_exc()}")
-        console.print(f"💥 Error in index_drive: {e}", style="red")
-        raise
-
-    print("DEBUG 14: About to create Progress context")
+    console.print(Panel.fit("🔍 Starting Google Drive Indexing", style="bold blue"))
     
     # Enhanced progress tracking
     with Progress(
@@ -301,11 +248,7 @@ def index_drive(
         console=console,
         transient=False,
     ) as progress:
-        
-        print("DEBUG 15: Inside Progress context")
 
-        print("DEBUG 16: About to add auth task")
-        
         # Authentication task
         auth_task = progress.add_task(
             "🔐 Authenticating with Google Drive...",
@@ -314,15 +257,9 @@ def index_drive(
             folders=0,
             docs=0,
         )
-        
-        print("DEBUG 17: Auth task added")
 
         try:
-            print("DEBUG 18: Inside progress try block")
-            console.print("🔧 Creating GoogleDriveProcessor...", style="dim")
-            print("DEBUG 19: About to create GoogleDriveProcessor")
             processor = GoogleDriveProcessor()
-            print("DEBUG 20: GoogleDriveProcessor created")
 
             # Enhanced authentication with detailed feedback
             def auth_progress_callback(message: str):
@@ -330,11 +267,7 @@ def index_drive(
                 if verbose:
                     console.print(f"  {message}", style="dim")
 
-            console.print("🔐 Starting authentication...", style="dim")
-            auth_result = processor.authenticate(progress_callback=auth_progress_callback)
-            console.print(f"🔍 Authentication result: {auth_result}", style="dim")
-            
-            if not auth_result:
+            if not processor.authenticate(progress_callback=auth_progress_callback):
                 console.print(
                     "❌ Failed to authenticate with Google Drive", style="red"
                 )
@@ -383,11 +316,9 @@ def index_drive(
                 if verbose and current_path and phase != "saving":
                     console.print(f"  📂 {current_path}", style="dim")
 
-            console.print("📁 Starting drive processing...", style="dim")
             success = processor.process_drive(
                 output_file, progress_callback=update_progress
             )
-            console.print(f"📊 Drive processing result: {success}", style="dim")
 
             if not success:
                 console.print("❌ Failed to index Google Drive", style="red")
@@ -582,11 +513,7 @@ def main():
 @app.command("test")
 def test():
     """Test command to verify typer is working."""
-    print("TEST: Function called!")
-    print("TEST: About to call console.print")
     console.print("✅ Test command works!", style="green")
-    print("TEST: console.print completed")
-    return "test completed"
 
 
 @app.command("version")
@@ -598,11 +525,10 @@ def version():
     )
 
 
-print("DEBUG: Command registration complete")
-print(f"DEBUG: App commands: {[cmd.name for cmd in app.registered_commands]}")
+def main():
+    """Entry point for the CLI application."""
+    app()
+
 
 if __name__ == "__main__":
-    print("DEBUG: Running app directly")
     app()
-else:
-    print("DEBUG: Module imported, not running directly")
