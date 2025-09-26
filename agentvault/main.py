@@ -34,7 +34,7 @@ console = Console()
 print("DEBUG: Console created")
 
 
-@app.command()
+@app.command("process")
 def process(
     force: bool = typer.Option(
         False, "--force", "-f", help="Force reprocessing even if data exists"
@@ -82,7 +82,7 @@ def process(
     console.print("✅ Text processing completed!", style="green bold")
 
 
-@app.command()
+@app.command("chat")
 def chat():
     """Run the interactive RAG agent chat interface."""
 
@@ -161,7 +161,7 @@ def chat():
             console.print("Please try again.\n", style="yellow")
 
 
-@app.command()
+@app.command("summary")
 def summary():
     """Show summary of processed texts in a beautiful table."""
     summary_path = PROCESSED_DIR / "summary.json"
@@ -215,7 +215,7 @@ def summary():
 
 print("DEBUG: Registering index_drive command...")
 
-@app.command()
+@app.command("index-drive")
 def index_drive(
     output_file: str = typer.Option(
         GOOGLE_DRIVE_INDEX_FILE, "--output", "-o", help="Output parquet file name"
@@ -438,7 +438,7 @@ def index_drive(
         console.print(f"📁 Index saved to: [bold blue]{output_path}[/bold blue]")
 
 
-@app.command()
+@app.command("drive-summary")
 def drive_summary(
     index_file: str = typer.Option(
         GOOGLE_DRIVE_INDEX_FILE, "--file", "-f", help="Index file to summarize"
@@ -519,7 +519,7 @@ def drive_summary(
         console.print(files_table)
 
 
-@app.command()
+@app.command("query")
 def query(
     question: str = typer.Argument(..., help="Question to ask about the texts"),
     show_citations: bool = typer.Option(
@@ -579,7 +579,7 @@ def main():
     pass
 
 
-@app.command()
+@app.command("test")
 def test():
     """Test command to verify typer is working."""
     print("TEST: Function called!")
@@ -589,7 +589,7 @@ def test():
     return "test completed"
 
 
-@app.command()
+@app.command("version")
 def version():
     """Show version information."""
     console.print("🤖 agentvault version 0.1.0", style="bold blue")
