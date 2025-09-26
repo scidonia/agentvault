@@ -221,6 +221,9 @@ def index_drive(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed progress information"
     ),
+    debug: bool = typer.Option(
+        False, "--debug", help="Show debug information"
+    ),
 ):
     """Index Google Drive files and create searchable database with detailed progress tracking."""
     
@@ -267,7 +270,7 @@ def index_drive(
                 if verbose:
                     console.print(f"  {message}", style="dim")
 
-            if not processor.authenticate(progress_callback=auth_progress_callback):
+            if not processor.authenticate(progress_callback=auth_progress_callback, debug=debug):
                 console.print(
                     "❌ Failed to authenticate with Google Drive", style="red"
                 )

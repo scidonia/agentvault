@@ -38,7 +38,7 @@ class GoogleDriveProcessor:
         self.credentials = None
         self.bookwyrm_api_url = "https://api.bookwyrm.ai/classify"  # Placeholder URL
 
-    def authenticate(self, progress_callback=None) -> bool:
+    def authenticate(self, progress_callback=None, debug=False) -> bool:
         """Authenticate with Google Drive API with detailed feedback."""
         creds = None
         token_path = Path("secret/token.pickle")
@@ -83,9 +83,11 @@ class GoogleDriveProcessor:
                     return False
                 
                 creds_files = list(secret_dir.glob("*.json"))
-                print(f"DEBUG: Found {len(creds_files)} JSON files in secret/")
-                for f in creds_files:
-                    print(f"DEBUG: - {f.name}")
+                
+                if debug:
+                    print(f"DEBUG: Found {len(creds_files)} JSON files in secret/")
+                    for f in creds_files:
+                        print(f"DEBUG: - {f.name}")
                 
                 if not creds_files:
                     update_progress("❌ No JSON credentials file found in secret/ directory")
@@ -123,27 +125,35 @@ class GoogleDriveProcessor:
 
         update_progress("🔧 Building Google Drive service...")
         try:
-            print("DEBUG: Setting credentials...")
+            if debug:
+                print("DEBUG: Setting credentials...")
             self.credentials = creds
-            print("DEBUG: Building service...")
+            if debug:
+                print("DEBUG: Building service...")
             self.service = build("drive", "v3", credentials=creds)
-            print("DEBUG: Service built successfully")
+            if debug:
+                print("DEBUG: Service built successfully")
             update_progress("✅ Google Drive service ready!")
             
             # Test the connection
-            print("DEBUG: About to test connection...")
+            if debug:
+                print("DEBUG: About to test connection...")
             update_progress("🧪 Testing connection...")
-            print("DEBUG: Making API call...")
+            if debug:
+                print("DEBUG: Making API call...")
             about = self.service.about().get(fields="user").execute()
-            print("DEBUG: API call completed")
+            if debug:
+                print("DEBUG: API call completed")
             user_email = about.get('user', {}).get('emailAddress', 'Unknown')
             update_progress(f"👤 Connected as: {user_email}")
-            print(f"DEBUG: Connected as {user_email}")
+            if debug:
+                print(f"DEBUG: Connected as {user_email}")
             
             return True
             
         except Exception as e:
-            print(f"DEBUG: Exception in service building: {e}")
+            if debug:
+                print(f"DEBUG: Exception in service building: {e}")
             update_progress(f"❌ Failed to build Google Drive service: {e}")
             logger.error(f"Service build failed: {e}")
             return False
