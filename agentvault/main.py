@@ -412,17 +412,19 @@ def query(
 
 
 @app.callback()
-def main(
-    version: Optional[bool] = typer.Option(None, "--version", help="Show version and exit")
-):
+def main():
     """
     🤖 BookWyrm RAG Agent
     
     A powerful tool for asking questions about literary texts using advanced AI.
     """
-    if version:
-        console.print("agentvault version 0.1.0", style="bold blue")
-        raise typer.Exit()
+    pass
+
+
+@app.command()
+def version():
+    """Show version information."""
+    console.print("agentvault version 0.1.0", style="bold blue")
 
 
 if __name__ == "__main__":
