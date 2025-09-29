@@ -771,6 +771,30 @@ def extract_pdfs(
             console.print("❌ Extraction cancelled", style="yellow")
             raise typer.Exit()
     
+    # Check prerequisites before starting
+    processor = GoogleDriveProcessor()
+    
+    if not processor.bookwyrm_client:
+        console.print("❌ BookWyrm API key not found", style="red")
+        console.print("\n📋 [bold]Setup Instructions:[/bold]", style="yellow")
+        console.print("1. Get an API key from https://api.bookwyrm.ai", style="yellow")
+        console.print("2. Set environment variable:", style="yellow")
+        console.print("   [cyan]export BOOKWYRM_API_KEY='your-api-key-here'[/cyan]", style="yellow")
+        console.print("3. Run the command again", style="yellow")
+        raise typer.Exit(1)
+    
+    # Import the HAS_PDF_SUPPORT flag
+    from .google_drive_processor import HAS_PDF_SUPPORT
+    
+    if not HAS_PDF_SUPPORT:
+        console.print("❌ PDF extraction not supported in current BookWyrm client", style="red")
+        console.print("\n📋 [bold]Upgrade Instructions:[/bold]", style="yellow")
+        console.print("1. Upgrade BookWyrm client:", style="yellow")
+        console.print("   [cyan]pip install --upgrade bookwyrm-client[/cyan]", style="yellow")
+        console.print("2. Or install from source if needed", style="yellow")
+        console.print("3. Run the command again", style="yellow")
+        raise typer.Exit(1)
+    
     console.print(Panel.fit("📄 Starting PDF Text Extraction", style="bold blue"))
     
     with Progress(
@@ -791,8 +815,7 @@ def extract_pdfs(
         )
         
         try:
-            processor = GoogleDriveProcessor()
-            
+            # processor already created above for prerequisite checks
             if not processor.service:
                 if not processor.authenticate():
                     console.print("❌ Failed to authenticate with Google Drive", style="red")
@@ -889,6 +912,30 @@ def process_phrases(
             console.print("❌ Processing cancelled", style="yellow")
             raise typer.Exit()
     
+    # Check prerequisites before starting
+    processor = GoogleDriveProcessor()
+    
+    if not processor.bookwyrm_client:
+        console.print("❌ BookWyrm API key not found", style="red")
+        console.print("\n📋 [bold]Setup Instructions:[/bold]", style="yellow")
+        console.print("1. Get an API key from https://api.bookwyrm.ai", style="yellow")
+        console.print("2. Set environment variable:", style="yellow")
+        console.print("   [cyan]export BOOKWYRM_API_KEY='your-api-key-here'[/cyan]", style="yellow")
+        console.print("3. Run the command again", style="yellow")
+        raise typer.Exit(1)
+    
+    # Import the HAS_PDF_SUPPORT flag
+    from .google_drive_processor import HAS_PDF_SUPPORT
+    
+    if not HAS_PDF_SUPPORT:
+        console.print("❌ Phrasal processing not supported in current BookWyrm client", style="red")
+        console.print("\n📋 [bold]Upgrade Instructions:[/bold]", style="yellow")
+        console.print("1. Upgrade BookWyrm client:", style="yellow")
+        console.print("   [cyan]pip install --upgrade bookwyrm-client[/cyan]", style="yellow")
+        console.print("2. Or install from source if needed", style="yellow")
+        console.print("3. Run the command again", style="yellow")
+        raise typer.Exit(1)
+    
     console.print(Panel.fit("🔤 Starting Phrasal Processing", style="bold blue"))
     
     with Progress(
@@ -904,7 +951,7 @@ def process_phrases(
     ) as progress:
         
         try:
-            processor = GoogleDriveProcessor()
+            # processor already created above for prerequisite checks
             
             # Processing task
             process_task = progress.add_task(

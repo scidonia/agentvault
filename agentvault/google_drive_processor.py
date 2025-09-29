@@ -658,6 +658,15 @@ class GoogleDriveProcessor:
     ) -> bool:
         """Extract text from all PDFs in the index and save to parquet."""
         
+        # Check prerequisites first
+        if not self.bookwyrm_client:
+            logger.error("BookWyrm client not available. Please set BOOKWYRM_API_KEY environment variable.")
+            return False
+            
+        if not HAS_PDF_SUPPORT:
+            logger.error("PDF extraction not supported in this BookWyrm client version. Please upgrade bookwyrm-client.")
+            return False
+        
         index_path = DATA_DIR / index_file
         if not index_path.exists():
             logger.error(f"Index file not found: {index_path}")
