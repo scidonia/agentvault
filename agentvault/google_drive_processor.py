@@ -26,18 +26,24 @@ except ImportError as e:
 
 # Import BookWyrm client for classification and PDF extraction
 try:
-    import sys
-    sys.path.append('../bookwyrm-client')
     from bookwyrm.client import BookWyrmClient, BookWyrmAPIError
-    from bookwyrm.models import (
-        ClassifyRequest,
-        PDFExtractRequest,
-        ProcessTextRequest,
-        ResponseFormat,
-    )
+    from bookwyrm.models import ClassifyRequest
+    
+    # Try to import PDF and phrasal processing models
+    try:
+        from bookwyrm.models import PDFExtractRequest, ProcessTextRequest, ResponseFormat
+        HAS_PDF_SUPPORT = True
+    except ImportError:
+        print("⚠️  PDF extraction and phrasal processing not available in this BookWyrm client version")
+        HAS_PDF_SUPPORT = False
+        PDFExtractRequest = None
+        ProcessTextRequest = None
+        ResponseFormat = None
+        
 except ImportError as e:
     print(f"❌ Missing BookWyrm client: {e}")
     print("Please ensure bookwyrm-client is available")
+    print("Try: pip install bookwyrm-client")
     raise
 
 from .config import DATA_DIR, EMBEDDING_MODEL
