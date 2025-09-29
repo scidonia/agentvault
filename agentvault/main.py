@@ -17,6 +17,8 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
+import fnmatch
+import re
 
 from .data_processor import GutenbergProcessor
 from .google_drive_processor import GoogleDriveProcessor
@@ -527,6 +529,211 @@ def main():
 def test():
     """Test command to verify typer is working."""
     console.print("✅ Test command works!", style="green")
+
+
+@app.command("list")
+def list_files(
+    pattern: Optional[str] = typer.Argument(None, help="Pattern to match file names/paths (supports wildcards)"),
+    index_file: str = typer.Option(
+        GOOGLE_DRIVE_INDEX_FILE, "--file", "-f", help="Index file to read from"
+    ),
+    # Column toggles
+    name: bool = typer.Option(True, "--name/--no-name", "-n", help="Show file names"),
+    path: bool = typer.Option(False, "--path/--no-path", "-p", help="Show full paths"),
+    category: bool = typer.Option(True, "--category/--no-category", "-c", help="Show categories"),
+    language: bool = typer.Option(False, "--language/--no-language", "-l", help="Show detected language"),
+    size: bool = typer.Option(True, "--size/--no-size", "-s", help="Show file sizes"),
+    mime: bool = typer.Option(False, "--mime/--no-mime", "-m", help="Show MIME types"),
+    modified: bool = typer.Option(False, "--modified/--no-modified", "-t", help="Show modification times"),
+    confidence: bool = typer.Option(False, "--confidence/--no-confidence", help="Show classification confidence"),
+    # Filters
+    filter_category: Optional[str] = typer.Option(None, "--filter-category", help="Filter by category"),
+    filter_language: Optional[str] = typer.Option(None, "--filter-language", help="Filter by language"),
+    filter_mime: Optional[str] = typer.Option(None, "--filter-mime", help="Filter by MIME type"),
+    folders_only: bool = typer.Option(False, "--folders-only", help="Show only folders"),
+    files_only: bool = typer.Option(False, "--files-only", help="Show only files (not folders)"),
+    # Display options
+    limit: Optional[int] = typer.Option(None, "--limit", help="Limit number of results"),
+    sort_by: str = typer.Option("name", "--sort", help="Sort by: name, size, modified, category"),
+    reverse: bool = typer.Option(False, "--reverse", "-r", help="Reverse sort order"),
+):
+    """List files from the Google Drive index with filtering and customizable columns."""
+    
+    index_path = DATA_DIR / index_file
+    
+    if not index_path.exists():
+        console.print(f"❌ Index file {index_file} not found at {index_path}", style="red")
+        console.print("Please run Google Drive indexing first:", style="yellow")
+        console.print("  [bold]agentvault index-drive[/bold]")
+        raise typer.Exit(1)
+    
+    try:
+        import pandas as pd
+        df = pd.read_parquet(index_path)
+    except Exception as e:
+        console.print(f"❌ Error reading index file: {e}", style="red")
+        raise typer.Exit(1)
+    
+    if df.empty:
+        console.print("📂 No files found in index", style="yellow")
+        return
+    
+    # Apply filters
+    filtered_df = df.copy()
+    
+    # Pattern matching
+    if pattern:
+        if path:
+            # Match against full path
+            mask = filtered_df['path'].str.contains(pattern.replace('*', '.*').replace('?', '.'), 
+                                                   case=False, regex=True, na=False)
+        else:
+            # Match against file name
+            mask = filtered_df['name'].str.contains(pattern.replace('*', '.*').replace('?', '.'), 
+                                                   case=False, regex=True, na=False)
+        filtered_df = filtered_df[mask]
+    
+    # Category filter
+    if filter_category:
+        filtered_df = filtered_df[filtered_df['category'].str.contains(filter_category, case=False, na=False)]
+    
+    # Language filter
+    if filter_language:
+        filtered_df = filtered_df[filtered_df['language'].str.contains(filter_language, case=False, na=False)]
+    
+    # MIME type filter
+    if filter_mime:
+        filtered_df = filtered_df[filtered_df['mime_type'].str.contains(filter_mime, case=False, na=False)]
+    
+    # Folder/file filters
+    if folders_only:
+        filtered_df = filtered_df[filtered_df['is_folder'] == True]
+    elif files_only:
+        filtered_df = filtered_df[filtered_df['is_folder'] == False]
+    
+    if filtered_df.empty:
+        console.print("📂 No files match the specified criteria", style="yellow")
+        return
+    
+    # Sort the results
+    sort_column_map = {
+        'name': 'name',
+        'size': 'size',
+        'modified': 'modified_time',
+        'category': 'category'
+    }
+    
+    if sort_by in sort_column_map:
+        sort_col = sort_column_map[sort_by]
+        if sort_col in filtered_df.columns:
+            filtered_df = filtered_df.sort_values(sort_col, ascending=not reverse)
+    
+    # Apply limit
+    if limit:
+        filtered_df = filtered_df.head(limit)
+    
+    # Create table with requested columns
+    table = Table(title=f"📁 Files in Agent Vault ({len(filtered_df)} results)")
+    
+    # Add columns based on flags
+    if name:
+        table.add_column("Name", style="cyan", no_wrap=False, max_width=40)
+    if path:
+        table.add_column("Path", style="blue", no_wrap=False, max_width=50)
+    if category:
+        table.add_column("Category", style="green", max_width=20)
+    if language:
+        table.add_column("Language", style="yellow", max_width=10)
+    if size:
+        table.add_column("Size", justify="right", style="magenta")
+    if mime:
+        table.add_column("MIME Type", style="dim", max_width=25)
+    if modified:
+        table.add_column("Modified", style="dim", max_width=20)
+    if confidence:
+        table.add_column("Confidence", justify="right", style="bright_blue")
+    
+    # Add rows
+    for _, row in filtered_df.iterrows():
+        row_data = []
+        
+        if name:
+            file_name = row.get('name', 'Unknown')
+            if row.get('is_folder', False):
+                file_name = f"📁 {file_name}"
+            else:
+                file_name = f"📄 {file_name}"
+            row_data.append(file_name)
+        
+        if path:
+            row_data.append(row.get('path', ''))
+        
+        if category:
+            cat = row.get('category', 'Unknown')
+            subcat = row.get('subcategory', '')
+            if subcat and subcat != 'Unknown':
+                row_data.append(f"{cat}/{subcat}")
+            else:
+                row_data.append(cat)
+        
+        if language:
+            lang = row.get('language', 'unknown')
+            row_data.append(lang if lang != 'unknown' else '-')
+        
+        if size:
+            file_size = row.get('size', 0)
+            if file_size > 0:
+                if file_size >= 1024*1024:
+                    row_data.append(f"{file_size/(1024*1024):.1f} MB")
+                elif file_size >= 1024:
+                    row_data.append(f"{file_size/1024:.1f} KB")
+                else:
+                    row_data.append(f"{file_size} B")
+            else:
+                row_data.append("-")
+        
+        if mime:
+            row_data.append(row.get('mime_type', 'unknown'))
+        
+        if modified:
+            mod_time = row.get('modified_time', '')
+            if mod_time:
+                # Format the timestamp nicely
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(mod_time.replace('Z', '+00:00'))
+                    row_data.append(dt.strftime('%Y-%m-%d %H:%M'))
+                except:
+                    row_data.append(mod_time[:16])  # Fallback to first 16 chars
+            else:
+                row_data.append('-')
+        
+        if confidence:
+            conf = row.get('classification_confidence', 0.0)
+            if conf > 0:
+                row_data.append(f"{conf:.2f}")
+            else:
+                row_data.append("-")
+        
+        table.add_row(*row_data)
+    
+    console.print(table)
+    
+    # Show summary
+    total_files = len(filtered_df[filtered_df['is_folder'] == False])
+    total_folders = len(filtered_df[filtered_df['is_folder'] == True])
+    total_size = filtered_df['size'].sum()
+    
+    summary_text = f"📊 Summary: {total_files} files, {total_folders} folders"
+    if total_size > 0:
+        if total_size >= 1024*1024*1024:
+            summary_text += f", {total_size/(1024*1024*1024):.1f} GB total"
+        elif total_size >= 1024*1024:
+            summary_text += f", {total_size/(1024*1024):.1f} MB total"
+        else:
+            summary_text += f", {total_size/1024:.1f} KB total"
+    
+    console.print(f"\n{summary_text}", style="dim")
 
 
 @app.command("version")
