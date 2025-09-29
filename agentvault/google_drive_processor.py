@@ -17,10 +17,22 @@ try:
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
     import requests
+    import base64
 except ImportError as e:
     print(f"❌ Missing required dependency: {e}")
     print("Please install Google API dependencies:")
     print("  uv add google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client pyarrow")
+    raise
+
+# Import BookWyrm client for classification
+try:
+    import sys
+    sys.path.append('../bookwyrm-client')
+    from bookwyrm.client import BookWyrmClient, BookWyrmAPIError
+    from bookwyrm.models import ClassifyRequest
+except ImportError as e:
+    print(f"❌ Missing BookWyrm client: {e}")
+    print("Please ensure bookwyrm-client is available")
     raise
 
 from .config import DATA_DIR, EMBEDDING_MODEL
@@ -37,7 +49,25 @@ class GoogleDriveProcessor:
     def __init__(self):
         self.service = None
         self.credentials = None
-        self.bookwyrm_api_url = "https://api.bookwyrm.ai/classify"  # Placeholder URL
+        self.bookwyrm_client = None
+        self._init_bookwyrm_client()
+    
+    def _init_bookwyrm_client(self):
+        """Initialize BookWyrm client for classification."""
+        try:
+            # Get API settings from environment or config
+            base_url = os.getenv("BOOKWYRM_API_URL", "https://api.bookwyrm.ai:443")
+            api_key = os.getenv("BOOKWYRM_API_KEY")
+            
+            if api_key:
+                self.bookwyrm_client = BookWyrmClient(base_url=base_url, api_key=api_key)
+                logger.info("BookWyrm client initialized successfully")
+            else:
+                logger.warning("No BOOKWYRM_API_KEY found - classification will use fallback method")
+                self.bookwyrm_client = None
+        except Exception as e:
+            logger.warning(f"Failed to initialize BookWyrm client: {e}")
+            self.bookwyrm_client = None
 
     def authenticate(self, progress_callback=None, debug=False) -> bool:
         """Authenticate with Google Drive API with detailed feedback."""
@@ -270,20 +300,41 @@ class GoogleDriveProcessor:
         self, file_name: str, content: Optional[str], mime_type: str
     ) -> Dict[str, str]:
         """Classify file using BookWyrm API."""
-        # Placeholder implementation - replace with actual BookWyrm API call
         try:
-            # Prepare data for classification
-            classification_data = {
-                "filename": file_name,
-                "mime_type": mime_type,
-                "content_preview": content[:500] if content else "",
-            }
+            # Try BookWyrm API classification first
+            if self.bookwyrm_client and content:
+                try:
+                    # Encode content as base64 for BookWyrm API
+                    content_bytes = content.encode('utf-8')
+                    content_b64 = base64.b64encode(content_bytes).decode('ascii')
+                    
+                    # Create classification request
+                    request = ClassifyRequest(
+                        content=content_b64,
+                        filename=file_name,
+                        content_encoding="base64"
+                    )
+                    
+                    # Make API call
+                    response = self.bookwyrm_client.classify(request)
+                    
+                    # Extract classification results
+                    classification = response.classification
+                    
+                    return {
+                        "category": classification.format_type,
+                        "subcategory": classification.content_type,
+                        "language": getattr(classification, 'language', 'unknown'),
+                        "confidence": classification.confidence,
+                        "mime_type_detected": classification.mime_type
+                    }
+                    
+                except BookWyrmAPIError as e:
+                    logger.warning(f"BookWyrm API error for {file_name}: {e}")
+                except Exception as e:
+                    logger.warning(f"BookWyrm classification failed for {file_name}: {e}")
 
-            # Make API call to BookWyrm (placeholder)
-            # response = requests.post(self.bookwyrm_api_url, json=classification_data)
-            # result = response.json()
-
-            # For now, return basic classification based on mime type
+            # Fallback to basic classification based on mime type
             if mime_type.startswith("text/"):
                 category = "Text Document"
                 subcategory = "Plain Text"
@@ -303,11 +354,23 @@ class GoogleDriveProcessor:
                 category = "Other"
                 subcategory = "Unknown"
 
-            return {"category": category, "subcategory": subcategory}
+            return {
+                "category": category, 
+                "subcategory": subcategory,
+                "language": "unknown",
+                "confidence": 0.0,
+                "mime_type_detected": mime_type
+            }
 
         except Exception as error:
             logger.error(f"Error classifying file: {error}")
-            return {"category": "Unknown", "subcategory": "Error"}
+            return {
+                "category": "Unknown", 
+                "subcategory": "Error",
+                "language": "unknown",
+                "confidence": 0.0,
+                "mime_type_detected": mime_type
+            }
 
     def traverse_drive(
         self, folder_id: str = "root", path: str = "/"
@@ -347,6 +410,9 @@ class GoogleDriveProcessor:
                         "content_preview": content[:500] if content else "",
                         "category": classification["category"],
                         "subcategory": classification["subcategory"],
+                        "language": classification["language"],
+                        "classification_confidence": classification["confidence"],
+                        "detected_mime_type": classification["mime_type_detected"],
                     }
                 )
 
