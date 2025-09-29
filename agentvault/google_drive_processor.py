@@ -29,7 +29,12 @@ try:
     import sys
     sys.path.append('../bookwyrm-client')
     from bookwyrm.client import BookWyrmClient, BookWyrmAPIError
-    from bookwyrm.models import ClassifyRequest, PDFExtractRequest, ProcessTextRequest, ResponseFormat
+    from bookwyrm.models import (
+        ClassifyRequest,
+        PDFExtractRequest,
+        ProcessTextRequest,
+        ResponseFormat,
+    )
 except ImportError as e:
     print(f"❌ Missing BookWyrm client: {e}")
     print("Please ensure bookwyrm-client is available")
@@ -599,6 +604,10 @@ class GoogleDriveProcessor:
             logger.warning("BookWyrm client not available for PDF extraction")
             return None
             
+        if not HAS_PDF_SUPPORT:
+            logger.warning("PDF extraction not supported in this BookWyrm client version")
+            return None
+            
         try:
             # Download PDF content as binary
             request = self.service.files().get_media(fileId=file_id)
@@ -765,6 +774,10 @@ class GoogleDriveProcessor:
         
         if not self.bookwyrm_client:
             logger.error("BookWyrm client not available for phrasal processing")
+            return False
+            
+        if not HAS_PDF_SUPPORT:
+            logger.error("Phrasal processing not supported in this BookWyrm client version")
             return False
             
         extractions_path = DATA_DIR / extractions_file
