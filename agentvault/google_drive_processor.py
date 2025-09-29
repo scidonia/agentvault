@@ -24,12 +24,12 @@ except ImportError as e:
     print("  uv add google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client pyarrow")
     raise
 
-# Import BookWyrm client for classification
+# Import BookWyrm client for classification and PDF extraction
 try:
     import sys
     sys.path.append('../bookwyrm-client')
     from bookwyrm.client import BookWyrmClient, BookWyrmAPIError
-    from bookwyrm.models import ClassifyRequest
+    from bookwyrm.models import ClassifyRequest, PDFExtractRequest, ProcessTextRequest, ResponseFormat
 except ImportError as e:
     print(f"❌ Missing BookWyrm client: {e}")
     print("Please ensure bookwyrm-client is available")
@@ -592,3 +592,296 @@ class GoogleDriveProcessor:
         
         # Generate SHA-256 hash
         return hashlib.sha256(hash_string.encode('utf-8')).hexdigest()
+
+    def extract_pdf_text(self, file_id: str, file_name: str) -> Optional[str]:
+        """Extract full text from PDF using BookWyrm API."""
+        if not self.bookwyrm_client:
+            logger.warning("BookWyrm client not available for PDF extraction")
+            return None
+            
+        try:
+            # Download PDF content as binary
+            request = self.service.files().get_media(fileId=file_id)
+            pdf_content = request.execute()
+            
+            # Encode as base64 for BookWyrm API
+            pdf_b64 = base64.b64encode(pdf_content).decode('ascii')
+            
+            # Create PDF extraction request
+            extract_request = PDFExtractRequest(
+                pdf_content=pdf_b64,
+                filename=file_name
+            )
+            
+            # Make API call
+            response = self.bookwyrm_client.extract_pdf(extract_request)
+            
+            # Combine all text from all pages
+            full_text = []
+            for page in response.pages:
+                page_text = []
+                for text_block in page.text_blocks:
+                    page_text.append(text_block.text)
+                if page_text:
+                    full_text.append(' '.join(page_text))
+            
+            return '\n\n'.join(full_text) if full_text else None
+            
+        except BookWyrmAPIError as e:
+            logger.error(f"BookWyrm PDF extraction error for {file_name}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"PDF extraction failed for {file_name}: {e}")
+            return None
+
+    def process_pdf_extractions(
+        self, 
+        index_file: str = "google_drive_index.parquet",
+        output_file: str = "pdf_extractions.parquet",
+        progress_callback=None,
+        limit: Optional[int] = None
+    ) -> bool:
+        """Extract text from all PDFs in the index and save to parquet."""
+        
+        index_path = DATA_DIR / index_file
+        if not index_path.exists():
+            logger.error(f"Index file not found: {index_path}")
+            return False
+            
+        try:
+            # Load the index
+            df = pd.read_parquet(index_path)
+            
+            # Filter for PDF files only
+            pdf_files = df[
+                (df['mime_type'] == 'application/pdf') & 
+                (df['is_folder'] == False)
+            ].copy()
+            
+            if pdf_files.empty:
+                logger.warning("No PDF files found in index")
+                return False
+                
+            logger.info(f"Found {len(pdf_files)} PDF files to process")
+            
+            # Apply limit if specified
+            if limit:
+                pdf_files = pdf_files.head(limit)
+                logger.info(f"Processing limited to {len(pdf_files)} files")
+            
+            # Check for existing extractions
+            output_path = DATA_DIR / output_file
+            existing_hashes = set()
+            existing_data = []
+            
+            if output_path.exists():
+                try:
+                    existing_df = pd.read_parquet(output_path)
+                    existing_hashes = set(existing_df['file_hash'])
+                    existing_data = existing_df.to_dict('records')
+                    logger.info(f"Found {len(existing_data)} existing extractions")
+                except Exception as e:
+                    logger.warning(f"Could not load existing extractions: {e}")
+            
+            # Process PDFs
+            extractions = []
+            processed_count = 0
+            skipped_count = 0
+            error_count = 0
+            
+            for _, row in pdf_files.iterrows():
+                file_hash = row['file_hash']
+                file_name = row['name']
+                file_id = row['file_id']
+                
+                # Skip if already processed
+                if file_hash in existing_hashes:
+                    skipped_count += 1
+                    continue
+                
+                # Update progress
+                if progress_callback:
+                    progress_callback({
+                        'current_file': file_name,
+                        'processed': processed_count,
+                        'total': len(pdf_files),
+                        'skipped': skipped_count,
+                        'errors': error_count
+                    })
+                
+                # Extract text
+                extracted_text = self.extract_pdf_text(file_id, file_name)
+                
+                if extracted_text:
+                    extractions.append({
+                        'file_hash': file_hash,
+                        'file_name': file_name,
+                        'file_id': file_id,
+                        'extracted_text': extracted_text,
+                        'text_length': len(extracted_text),
+                        'extraction_timestamp': pd.Timestamp.now().isoformat()
+                    })
+                    processed_count += 1
+                    logger.info(f"Extracted {len(extracted_text)} characters from {file_name}")
+                else:
+                    error_count += 1
+                    logger.warning(f"Failed to extract text from {file_name}")
+            
+            # Final progress update
+            if progress_callback:
+                progress_callback({
+                    'current_file': 'Saving extractions...',
+                    'processed': processed_count,
+                    'total': len(pdf_files),
+                    'skipped': skipped_count,
+                    'errors': error_count,
+                    'phase': 'saving'
+                })
+            
+            # Combine with existing data and save
+            all_extractions = existing_data + extractions
+            
+            if all_extractions:
+                df_extractions = pd.DataFrame(all_extractions)
+                df_extractions.to_parquet(output_path, index=False)
+                logger.info(f"Saved {len(all_extractions)} total extractions to {output_path}")
+                return True
+            else:
+                logger.warning("No extractions to save")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error processing PDF extractions: {e}")
+            return False
+
+    def process_phrases_from_extractions(
+        self,
+        extractions_file: str = "pdf_extractions.parquet", 
+        output_file: str = "pdf_phrases.parquet",
+        progress_callback=None,
+        limit: Optional[int] = None
+    ) -> bool:
+        """Process extracted text into phrases using BookWyrm phrasal API."""
+        
+        if not self.bookwyrm_client:
+            logger.error("BookWyrm client not available for phrasal processing")
+            return False
+            
+        extractions_path = DATA_DIR / extractions_file
+        if not extractions_path.exists():
+            logger.error(f"Extractions file not found: {extractions_path}")
+            return False
+            
+        try:
+            # Load extractions
+            df = pd.read_parquet(extractions_path)
+            
+            if df.empty:
+                logger.warning("No extractions found")
+                return False
+                
+            logger.info(f"Found {len(df)} text extractions to process")
+            
+            # Apply limit if specified
+            if limit:
+                df = df.head(limit)
+                logger.info(f"Processing limited to {len(df)} extractions")
+            
+            # Check for existing phrases
+            output_path = DATA_DIR / output_file
+            existing_hashes = set()
+            existing_data = []
+            
+            if output_path.exists():
+                try:
+                    existing_df = pd.read_parquet(output_path)
+                    existing_hashes = set(existing_df['file_hash'])
+                    existing_data = existing_df.to_dict('records')
+                    logger.info(f"Found {len(existing_data)} existing phrase records")
+                except Exception as e:
+                    logger.warning(f"Could not load existing phrases: {e}")
+            
+            # Process each extraction
+            all_phrases = []
+            processed_count = 0
+            skipped_count = 0
+            error_count = 0
+            
+            for _, row in df.iterrows():
+                file_hash = row['file_hash']
+                file_name = row['file_name']
+                extracted_text = row['extracted_text']
+                
+                # Skip if already processed
+                if file_hash in existing_hashes:
+                    skipped_count += 1
+                    continue
+                
+                # Update progress
+                if progress_callback:
+                    progress_callback({
+                        'current_file': file_name,
+                        'processed': processed_count,
+                        'total': len(df),
+                        'skipped': skipped_count,
+                        'errors': error_count
+                    })
+                
+                try:
+                    # Create phrasal processing request
+                    request = ProcessTextRequest(
+                        text=extracted_text,
+                        response_format=ResponseFormat.with_offsets,
+                        spacy_model="en_core_web_sm"
+                    )
+                    
+                    # Process text into phrases
+                    phrases = []
+                    phrase_count = 0
+                    
+                    for response in self.bookwyrm_client.process_text(request):
+                        if hasattr(response, 'text'):  # PhraseResult
+                            phrases.append({
+                                'file_hash': file_hash,
+                                'file_name': file_name,
+                                'phrase_count': phrase_count,
+                                'phrase': response.text,
+                                'start_char': response.start_char,
+                                'end_char': response.end_char
+                            })
+                            phrase_count += 1
+                    
+                    all_phrases.extend(phrases)
+                    processed_count += 1
+                    logger.info(f"Processed {len(phrases)} phrases from {file_name}")
+                    
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"Failed to process phrases for {file_name}: {e}")
+            
+            # Final progress update
+            if progress_callback:
+                progress_callback({
+                    'current_file': 'Saving phrases...',
+                    'processed': processed_count,
+                    'total': len(df),
+                    'skipped': skipped_count,
+                    'errors': error_count,
+                    'phase': 'saving'
+                })
+            
+            # Combine with existing data and save
+            all_phrase_data = existing_data + all_phrases
+            
+            if all_phrase_data:
+                df_phrases = pd.DataFrame(all_phrase_data)
+                df_phrases.to_parquet(output_path, index=False)
+                logger.info(f"Saved {len(all_phrase_data)} total phrase records to {output_path}")
+                return True
+            else:
+                logger.warning("No phrases to save")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error processing phrases: {e}")
+            return False

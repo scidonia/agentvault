@@ -736,6 +736,230 @@ def list_files(
     console.print(f"\n{summary_text}", style="dim")
 
 
+@app.command("extract-pdfs")
+def extract_pdfs(
+    index_file: str = typer.Option(
+        GOOGLE_DRIVE_INDEX_FILE, "--index", "-i", help="Google Drive index file to read from"
+    ),
+    output_file: str = typer.Option(
+        "pdf_extractions.parquet", "--output", "-o", help="Output file for PDF extractions"
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-n", help="Limit number of PDFs to process"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Force re-extraction even if extractions exist"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show detailed progress information"
+    ),
+):
+    """Extract full text from PDF files using BookWyrm API."""
+    
+    index_path = DATA_DIR / index_file
+    output_path = DATA_DIR / output_file
+    
+    if not index_path.exists():
+        console.print(f"❌ Index file {index_file} not found at {index_path}", style="red")
+        console.print("Please run Google Drive indexing first:", style="yellow")
+        console.print("  [bold]agentvault index-drive[/bold]")
+        raise typer.Exit(1)
+    
+    # Check if output already exists
+    if not force and output_path.exists():
+        if not typer.confirm(f"Extractions file {output_file} already exists. Continue anyway?"):
+            console.print("❌ Extraction cancelled", style="yellow")
+            raise typer.Exit()
+    
+    console.print(Panel.fit("📄 Starting PDF Text Extraction", style="bold blue"))
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TextColumn("[bold blue]{task.fields[processed]} processed"),
+        TextColumn("[bold yellow]{task.fields[skipped]} skipped"),
+        TextColumn("[bold red]{task.fields[errors]} errors"),
+        console=console,
+        transient=False,
+    ) as progress:
+        
+        # Authentication task
+        auth_task = progress.add_task(
+            "🔐 Authenticating...", total=100, processed=0, skipped=0, errors=0
+        )
+        
+        try:
+            processor = GoogleDriveProcessor()
+            
+            if not processor.service:
+                if not processor.authenticate():
+                    console.print("❌ Failed to authenticate with Google Drive", style="red")
+                    raise typer.Exit(1)
+            
+            progress.update(auth_task, advance=100, description="✅ Authenticated")
+            
+            # Extraction task
+            extract_task = progress.add_task(
+                "📄 Extracting PDF text...", total=None, processed=0, skipped=0, errors=0
+            )
+            
+            def update_progress(stats):
+                phase = stats.get('phase', 'processing')
+                current_file = stats.get('current_file', '')
+                
+                if phase == 'saving':
+                    description = "💾 Saving extractions..."
+                else:
+                    if verbose and current_file:
+                        description = f"📄 Processing: {current_file}"
+                    else:
+                        description = f"📄 Extracting text... ({stats['processed']} processed)"
+                
+                progress.update(
+                    extract_task,
+                    description=description,
+                    total=stats.get('total', None),
+                    completed=stats['processed'],
+                    processed=stats['processed'],
+                    skipped=stats['skipped'],
+                    errors=stats['errors']
+                )
+                
+                if verbose and current_file and phase != 'saving':
+                    console.print(f"  📄 {current_file}", style="dim")
+            
+            success = processor.process_pdf_extractions(
+                index_file=index_file,
+                output_file=output_file,
+                progress_callback=update_progress,
+                limit=limit
+            )
+            
+            if not success:
+                console.print("❌ PDF extraction failed", style="red")
+                raise typer.Exit(1)
+            
+            progress.update(extract_task, description="✅ Extraction completed")
+            
+        except KeyboardInterrupt:
+            console.print("\n⚠️  Extraction interrupted by user", style="yellow")
+            raise typer.Exit(1)
+        except Exception as e:
+            console.print(f"❌ Error during extraction: {e}", style="red")
+            raise typer.Exit(1)
+    
+    console.print("✅ PDF text extraction completed!", style="green bold")
+    console.print(f"📁 Extractions saved to: [bold blue]{output_path}[/bold blue]")
+
+
+@app.command("process-phrases")
+def process_phrases(
+    extractions_file: str = typer.Option(
+        "pdf_extractions.parquet", "--input", "-i", help="PDF extractions file to process"
+    ),
+    output_file: str = typer.Option(
+        "pdf_phrases.parquet", "--output", "-o", help="Output file for phrases"
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-n", help="Limit number of extractions to process"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Force re-processing even if phrases exist"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show detailed progress information"
+    ),
+):
+    """Process extracted PDF text into phrases using BookWyrm phrasal API."""
+    
+    input_path = DATA_DIR / extractions_file
+    output_path = DATA_DIR / output_file
+    
+    if not input_path.exists():
+        console.print(f"❌ Extractions file {extractions_file} not found at {input_path}", style="red")
+        console.print("Please run PDF extraction first:", style="yellow")
+        console.print("  [bold]agentvault extract-pdfs[/bold]")
+        raise typer.Exit(1)
+    
+    # Check if output already exists
+    if not force and output_path.exists():
+        if not typer.confirm(f"Phrases file {output_file} already exists. Continue anyway?"):
+            console.print("❌ Processing cancelled", style="yellow")
+            raise typer.Exit()
+    
+    console.print(Panel.fit("🔤 Starting Phrasal Processing", style="bold blue"))
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TextColumn("[bold blue]{task.fields[processed]} processed"),
+        TextColumn("[bold yellow]{task.fields[skipped]} skipped"),
+        TextColumn("[bold red]{task.fields[errors]} errors"),
+        console=console,
+        transient=False,
+    ) as progress:
+        
+        try:
+            processor = GoogleDriveProcessor()
+            
+            # Processing task
+            process_task = progress.add_task(
+                "🔤 Processing phrases...", total=None, processed=0, skipped=0, errors=0
+            )
+            
+            def update_progress(stats):
+                phase = stats.get('phase', 'processing')
+                current_file = stats.get('current_file', '')
+                
+                if phase == 'saving':
+                    description = "💾 Saving phrases..."
+                else:
+                    if verbose and current_file:
+                        description = f"🔤 Processing: {current_file}"
+                    else:
+                        description = f"🔤 Creating phrases... ({stats['processed']} processed)"
+                
+                progress.update(
+                    process_task,
+                    description=description,
+                    total=stats.get('total', None),
+                    completed=stats['processed'],
+                    processed=stats['processed'],
+                    skipped=stats['skipped'],
+                    errors=stats['errors']
+                )
+                
+                if verbose and current_file and phase != 'saving':
+                    console.print(f"  🔤 {current_file}", style="dim")
+            
+            success = processor.process_phrases_from_extractions(
+                extractions_file=extractions_file,
+                output_file=output_file,
+                progress_callback=update_progress,
+                limit=limit
+            )
+            
+            if not success:
+                console.print("❌ Phrasal processing failed", style="red")
+                raise typer.Exit(1)
+            
+            progress.update(process_task, description="✅ Processing completed")
+            
+        except KeyboardInterrupt:
+            console.print("\n⚠️  Processing interrupted by user", style="yellow")
+            raise typer.Exit(1)
+        except Exception as e:
+            console.print(f"❌ Error during processing: {e}", style="red")
+            raise typer.Exit(1)
+    
+    console.print("✅ Phrasal processing completed!", style="green bold")
+    console.print(f"📁 Phrases saved to: [bold blue]{output_path}[/bold blue]")
+
+
 @app.command("version")
 def version():
     """Show version information."""
