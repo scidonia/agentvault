@@ -1075,20 +1075,34 @@ class GoogleDriveProcessor:
                         error_count += 1
                         continue
                     
-                    # Truncate very long content to avoid API limits
-                    if len(content) > 100000:  # 100k chars limit
-                        content = content[:100000]
-                        logger.warning(f"Truncated content for {file_name} to 100k chars")
+                    # More aggressive content size limits for testing
+                    if len(content) > 50000:  # 50k chars limit
+                        content = content[:50000]
+                        logger.warning(f"Truncated content for {file_name} to 50k chars")
                     
                     # Clean content - remove excessive whitespace and control characters
                     content = ' '.join(content.split())
                     content = ''.join(char for char in content if ord(char) >= 32 or char in '\n\t')
                     
-                    logger.debug(f"Sending {len(content)} chars for summarization of {file_name}")
+                    # Additional validation
+                    if len(content.strip()) < 50:
+                        logger.warning(f"Skipping {file_name}: content too short after cleaning")
+                        error_count += 1
+                        continue
                     
-                    # Create summarization request
+                    logger.info(f"Sending {len(content)} chars for summarization of {file_name}")
+                    
+                    # Try using JSONL format instead of direct content
+                    # Create a simple JSONL with the content as a single chunk
+                    jsonl_content = json.dumps({
+                        "text": content,
+                        "start_char": 0,
+                        "end_char": len(content)
+                    })
+                    
+                    # Create summarization request with JSONL content
                     request = SummarizeRequest(
-                        content=content,
+                        content=jsonl_content,
                         max_tokens=max_tokens,
                         debug=False
                     )
