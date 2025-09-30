@@ -1686,9 +1686,11 @@ class GoogleDriveProcessor:
             # Create dense index with integrated embedding if it doesn't exist
             if TITLES_DENSE_INDEX not in existing_indexes:
                 logger.info(f"Creating dense index with integrated embedding: {TITLES_DENSE_INDEX}")
+                # Extract cloud from environment (e.g., "europe-west4-gcp" -> "gcp")
+                cloud = PINECONE_ENVIRONMENT.split('-')[-1]  # Get last part after splitting by '-'
                 self.pinecone_client.create_index_for_model(
                     name=TITLES_DENSE_INDEX,
-                    cloud=PINECONE_ENVIRONMENT.split('-')[0],  # Extract cloud from environment
+                    cloud=cloud,
                     region=PINECONE_ENVIRONMENT,
                     embed={
                         "model": "multilingual-e5-large",
@@ -1699,9 +1701,11 @@ class GoogleDriveProcessor:
             # Create sparse index with integrated embedding if it doesn't exist
             if TITLES_SPARSE_INDEX not in existing_indexes:
                 logger.info(f"Creating sparse index with integrated embedding: {TITLES_SPARSE_INDEX}")
+                # Extract cloud from environment (e.g., "europe-west4-gcp" -> "gcp")
+                cloud = PINECONE_ENVIRONMENT.split('-')[-1]  # Get last part after splitting by '-'
                 self.pinecone_client.create_index_for_model(
                     name=TITLES_SPARSE_INDEX,
-                    cloud=PINECONE_ENVIRONMENT.split('-')[0],  # Extract cloud from environment
+                    cloud=cloud,
                     region=PINECONE_ENVIRONMENT,
                     embed={
                         "model": "pinecone-sparse-english-v0",
