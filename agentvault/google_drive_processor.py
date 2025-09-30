@@ -907,7 +907,7 @@ class GoogleDriveProcessor:
                     # Create phrasal processing request
                     request = ProcessTextRequest(
                         text=content,
-                        response_format=ResponseFormat.with_offsets,
+                        response_format=ResponseFormat.WITH_OFFSETS,
                         spacy_model="en_core_web_sm"
                     )
                     
