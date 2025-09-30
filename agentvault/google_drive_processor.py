@@ -47,6 +47,20 @@ except ImportError as e:
     print("Try: pip install bookwyrm-client")
     raise
 
+# Import Pinecone and embedding libraries
+try:
+    import pinecone
+    from sentence_transformers import SentenceTransformer
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    HAS_PINECONE_SUPPORT = True
+except ImportError as e:
+    print(f"⚠️  Pinecone indexing not available: {e}")
+    print("To enable Pinecone indexing, install: uv add pinecone-client sentence-transformers scikit-learn")
+    HAS_PINECONE_SUPPORT = False
+    pinecone = None
+    SentenceTransformer = None
+    TfidfVectorizer = None
+
 from .config import (
     DATA_DIR, 
     EMBEDDING_MODEL, 
