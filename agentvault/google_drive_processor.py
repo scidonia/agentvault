@@ -1069,6 +1069,23 @@ class GoogleDriveProcessor:
                     })
                 
                 try:
+                    # Validate and clean content before sending
+                    if not content or len(content.strip()) < 10:
+                        logger.warning(f"Skipping {file_name}: content too short")
+                        error_count += 1
+                        continue
+                    
+                    # Truncate very long content to avoid API limits
+                    if len(content) > 100000:  # 100k chars limit
+                        content = content[:100000]
+                        logger.warning(f"Truncated content for {file_name} to 100k chars")
+                    
+                    # Clean content - remove excessive whitespace and control characters
+                    content = ' '.join(content.split())
+                    content = ''.join(char for char in content if ord(char) >= 32 or char in '\n\t')
+                    
+                    logger.debug(f"Sending {len(content)} chars for summarization of {file_name}")
+                    
                     # Create summarization request
                     request = SummarizeRequest(
                         content=content,
@@ -1102,6 +1119,11 @@ class GoogleDriveProcessor:
                 except Exception as e:
                     error_count += 1
                     logger.error(f"Failed to create summary for {file_name}: {e}")
+                    # Log more details for debugging
+                    if hasattr(e, 'status_code'):
+                        logger.error(f"HTTP Status: {e.status_code}")
+                    if len(content) > 50000:
+                        logger.error(f"Content length was {len(content)} chars - may be too large")
             
             # Final progress update
             if progress_callback:
