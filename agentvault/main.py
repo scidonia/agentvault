@@ -923,6 +923,124 @@ def create_summaries(
     console.print(f"📁 Summaries saved to: [bold blue]{output_path}[/bold blue]")
 
 
+@app.command("create-title-cards")
+def create_title_cards(
+    summaries_file: str = typer.Option(
+        "content_summaries.parquet", "--summaries", "-s", help="Summaries file to create title cards from"
+    ),
+    index_file: str = typer.Option(
+        GOOGLE_DRIVE_INDEX_FILE, "--index", "-i", help="Google Drive index file for metadata"
+    ),
+    output_file: str = typer.Option(
+        "title_cards.parquet", "--output", "-o", help="Output file for title cards"
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-n", help="Limit number of title cards to create"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Force re-processing even if title cards exist"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show detailed progress information"
+    ),
+):
+    """Create title cards from summaries with extracted metadata."""
+    
+    summaries_path = DATA_DIR / summaries_file
+    index_path = DATA_DIR / index_file
+    output_path = DATA_DIR / output_file
+    
+    if not summaries_path.exists():
+        console.print(f"❌ Summaries file {summaries_file} not found at {summaries_path}", style="red")
+        console.print("Please run summarization first:", style="yellow")
+        console.print("  [bold]agentvault create-summaries[/bold]")
+        raise typer.Exit(1)
+    
+    if not index_path.exists():
+        console.print(f"❌ Index file {index_file} not found at {index_path}", style="red")
+        console.print("Please run indexing first:", style="yellow")
+        console.print("  [bold]agentvault index-drive[/bold]")
+        raise typer.Exit(1)
+    
+    # Check if output already exists
+    if not force and output_path.exists():
+        if not typer.confirm(f"Title cards file {output_file} already exists. Continue anyway?"):
+            console.print("❌ Processing cancelled", style="yellow")
+            raise typer.Exit()
+    
+    console.print(Panel.fit("🎴 Starting Title Card Creation", style="bold blue"))
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TextColumn("[bold blue]{task.fields[processed]} processed"),
+        TextColumn("[bold yellow]{task.fields[skipped]} skipped"),
+        TextColumn("[bold red]{task.fields[errors]} errors"),
+        console=console,
+        transient=False,
+    ) as progress:
+        
+        try:
+            # Processing task
+            process_task = progress.add_task(
+                "🎴 Creating title cards...", total=None, processed=0, skipped=0, errors=0
+            )
+            
+            def update_progress(stats):
+                phase = stats.get('phase', 'processing')
+                current_file = stats.get('current_file', '')
+                
+                if phase == 'saving':
+                    description = "💾 Saving title cards..."
+                else:
+                    if verbose and current_file:
+                        description = f"🎴 Processing: {current_file}"
+                    else:
+                        description = f"🎴 Creating title cards... ({stats['processed']} processed)"
+                
+                progress.update(
+                    process_task,
+                    description=description,
+                    total=stats.get('total', None),
+                    completed=stats['processed'],
+                    processed=stats['processed'],
+                    skipped=stats['skipped'],
+                    errors=stats['errors']
+                )
+                
+                if verbose and current_file and phase != 'saving':
+                    console.print(f"  🎴 {current_file}", style="dim")
+            
+            # Create processor instance
+            processor = GoogleDriveProcessor()
+            
+            success = processor.create_title_cards(
+                summaries_file=summaries_file,
+                index_file=index_file,
+                output_file=output_file,
+                progress_callback=update_progress,
+                limit=limit
+            )
+            
+            if not success:
+                console.print("❌ Title card creation failed", style="red")
+                raise typer.Exit(1)
+            
+            progress.update(process_task, description="✅ Title card creation completed")
+            
+        except KeyboardInterrupt:
+            console.print("\n⚠️  Title card creation interrupted by user", style="yellow")
+            raise typer.Exit(1)
+        except Exception as e:
+            console.print(f"❌ Error during title card creation: {e}", style="red")
+            raise typer.Exit(1)
+    
+    console.print("✅ Title card creation completed!", style="green bold")
+    console.print(f"📁 Title cards saved to: [bold blue]{output_path}[/bold blue]")
+
+
 @app.command("version")
 def version():
     """Show version information."""

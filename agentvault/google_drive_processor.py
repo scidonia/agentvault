@@ -1403,3 +1403,233 @@ class GoogleDriveProcessor:
         except Exception as e:
             logger.error(f"Error processing summaries via endpoint: {e}")
             return False
+
+    def extract_title_and_author(self, file_name: str, summary: str, content_preview: str = "") -> Dict[str, str]:
+        """Extract title and author information from file name, summary, and content."""
+        import re
+        
+        # Initialize result
+        result = {
+            "title": "",
+            "author": "",
+            "extracted_from": ""
+        }
+        
+        # Clean up file name (remove extension, common prefixes)
+        clean_name = file_name
+        if '.' in clean_name:
+            clean_name = clean_name.rsplit('.', 1)[0]
+        
+        # Remove common prefixes/suffixes
+        clean_name = re.sub(r'^(copy of |draft |final |v\d+|version \d+)', '', clean_name, flags=re.IGNORECASE)
+        clean_name = re.sub(r'(draft|final|v\d+|version \d+)$', '', clean_name, flags=re.IGNORECASE)
+        clean_name = clean_name.strip()
+        
+        # Try to extract from summary first (most reliable)
+        if summary:
+            # Look for title patterns in summary
+            title_patterns = [
+                r'"([^"]+)"',  # Quoted titles
+                r'titled "([^"]+)"',
+                r'title[:\s]+"([^"]+)"',
+                r'work titled ([^,\n\.]+)',
+                r'document titled ([^,\n\.]+)',
+                r'book titled ([^,\n\.]+)',
+                r'story titled ([^,\n\.]+)',
+            ]
+            
+            for pattern in title_patterns:
+                match = re.search(pattern, summary, re.IGNORECASE)
+                if match:
+                    result["title"] = match.group(1).strip()
+                    result["extracted_from"] = "summary"
+                    break
+            
+            # Look for author patterns in summary
+            author_patterns = [
+                r'by ([A-Z][a-z]+ [A-Z][a-z]+)',  # by FirstName LastName
+                r'author ([A-Z][a-z]+ [A-Z][a-z]+)',
+                r'written by ([A-Z][a-z]+ [A-Z][a-z]+)',
+                r'([A-Z][a-z]+ [A-Z][a-z]+)\'s',  # Author's work
+            ]
+            
+            for pattern in author_patterns:
+                match = re.search(pattern, summary, re.IGNORECASE)
+                if match:
+                    result["author"] = match.group(1).strip()
+                    break
+        
+        # Try to extract from content preview if no title found
+        if not result["title"] and content_preview:
+            # Look for title at the beginning of content
+            lines = content_preview.split('\n')[:5]  # First 5 lines
+            for line in lines:
+                line = line.strip()
+                if len(line) > 5 and len(line) < 100:  # Reasonable title length
+                    # Check if it looks like a title (not too many common words)
+                    common_words = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by']
+                    words = line.lower().split()
+                    if len(words) > 0 and sum(1 for w in words if w in common_words) / len(words) < 0.5:
+                        result["title"] = line
+                        result["extracted_from"] = "content"
+                        break
+        
+        # Fall back to cleaned file name if no title found
+        if not result["title"]:
+            result["title"] = clean_name
+            result["extracted_from"] = "filename"
+        
+        return result
+
+    def create_title_cards(
+        self,
+        summaries_file: str = "content_summaries.parquet",
+        index_file: str = "google_drive_index.parquet",
+        output_file: str = "title_cards.parquet",
+        progress_callback=None,
+        limit: Optional[int] = None
+    ) -> bool:
+        """Create title cards from summaries with extracted metadata."""
+        
+        summaries_path = DATA_DIR / summaries_file
+        index_path = DATA_DIR / index_file
+        
+        if not summaries_path.exists():
+            logger.error(f"Summaries file not found: {summaries_path}")
+            return False
+            
+        if not index_path.exists():
+            logger.error(f"Index file not found: {index_path}")
+            return False
+            
+        try:
+            # Load summaries and index
+            df_summaries = pd.read_parquet(summaries_path)
+            df_index = pd.read_parquet(index_path)
+            
+            if df_summaries.empty:
+                logger.warning("No summaries found for title card creation")
+                return False
+            
+            logger.info(f"Found {len(df_summaries)} summaries to process into title cards")
+            
+            # Apply limit if specified
+            if limit:
+                df_summaries = df_summaries.head(limit)
+                logger.info(f"Processing limited to {len(df_summaries)} summaries")
+            
+            # Create a lookup for index data by file_hash
+            index_lookup = df_index.set_index('file_hash').to_dict('index')
+            
+            # Check for existing title cards
+            output_path = DATA_DIR / output_file
+            existing_hashes = set()
+            existing_data = []
+            
+            if output_path.exists():
+                try:
+                    existing_df = pd.read_parquet(output_path)
+                    existing_hashes = set(existing_df['file_hash'])
+                    existing_data = existing_df.to_dict('records')
+                    logger.info(f"Found {len(existing_data)} existing title cards")
+                except Exception as e:
+                    logger.warning(f"Could not load existing title cards: {e}")
+            
+            # Process each summary into a title card
+            title_cards = []
+            processed_count = 0
+            skipped_count = 0
+            error_count = 0
+            
+            for _, summary_row in df_summaries.iterrows():
+                file_hash = summary_row['file_hash']
+                file_name = summary_row['file_name']
+                
+                # Skip if already processed
+                if file_hash in existing_hashes:
+                    skipped_count += 1
+                    continue
+                
+                # Update progress
+                if progress_callback:
+                    progress_callback({
+                        'current_file': file_name,
+                        'processed': processed_count,
+                        'total': len(df_summaries),
+                        'skipped': skipped_count,
+                        'errors': error_count
+                    })
+                
+                try:
+                    # Get additional metadata from index
+                    index_data = index_lookup.get(file_hash, {})
+                    content_preview = index_data.get('content_preview', '')
+                    
+                    # Extract title and author
+                    title_info = self.extract_title_and_author(
+                        file_name, 
+                        summary_row['summary'], 
+                        content_preview
+                    )
+                    
+                    # Create title card
+                    title_card = {
+                        'file_hash': file_hash,
+                        'title': title_info['title'],
+                        'author': title_info['author'],
+                        'title_extracted_from': title_info['extracted_from'],
+                        'file_name': file_name,
+                        'summary': summary_row['summary'],
+                        'category': summary_row.get('category', 'Unknown'),
+                        'subcategory': index_data.get('subcategory', 'Unknown'),
+                        'language': summary_row.get('language', 'unknown'),
+                        'mime_type': summary_row.get('mime_type', ''),
+                        'content_source': summary_row.get('content_source', ''),
+                        'original_length': summary_row.get('original_length', 0),
+                        'summary_length': summary_row.get('summary_length', 0),
+                        'phrase_count': summary_row.get('phrase_count', 0),
+                        'levels_used': summary_row.get('levels_used', 0),
+                        'total_tokens': summary_row.get('total_tokens', 0),
+                        'file_size': index_data.get('size', 0),
+                        'modified_time': index_data.get('modified_time', ''),
+                        'web_view_link': index_data.get('web_view_link', ''),
+                        'path': index_data.get('path', ''),
+                        'classification_confidence': index_data.get('classification_confidence', 0.0),
+                        'summarization_timestamp': summary_row.get('summarization_timestamp', ''),
+                        'title_card_timestamp': pd.Timestamp.now().isoformat()
+                    }
+                    
+                    title_cards.append(title_card)
+                    processed_count += 1
+                    logger.info(f"Created title card for '{title_info['title']}' by {title_info['author'] or 'Unknown'}")
+                    
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"Failed to create title card for {file_name}: {e}")
+            
+            # Final progress update
+            if progress_callback:
+                progress_callback({
+                    'current_file': 'Saving title cards...',
+                    'processed': processed_count,
+                    'total': len(df_summaries),
+                    'skipped': skipped_count,
+                    'errors': error_count,
+                    'phase': 'saving'
+                })
+            
+            # Combine with existing data and save
+            all_title_cards = existing_data + title_cards
+            
+            if all_title_cards:
+                df_title_cards = pd.DataFrame(all_title_cards)
+                df_title_cards.to_parquet(output_path, index=False)
+                logger.info(f"Saved {len(all_title_cards)} total title cards to {output_path}")
+                return True
+            else:
+                logger.warning("No title cards to save")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error creating title cards: {e}")
+            return False
