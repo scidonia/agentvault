@@ -779,14 +779,15 @@ class GoogleDriveProcessor:
             logger.error(f"Error processing PDF extractions: {e}")
             return False
 
-    def process_phrases_from_extractions(
+    def process_phrases_from_all_content(
         self,
-        extractions_file: str = "pdf_extractions.parquet", 
-        output_file: str = "pdf_phrases.parquet",
+        index_file: str = "google_drive_index.parquet",
+        pdf_extractions_file: str = "pdf_extractions.parquet",
+        output_file: str = "content_phrases.parquet",
         progress_callback=None,
         limit: Optional[int] = None
     ) -> bool:
-        """Process extracted text into phrases using BookWyrm phrasal API."""
+        """Process all text content (PDF extractions + raw text) into phrases using BookWyrm phrasal API."""
         
         if not self.bookwyrm_client:
             logger.error("BookWyrm client not available for phrasal processing")
@@ -794,144 +795,6 @@ class GoogleDriveProcessor:
             
         if not HAS_PDF_SUPPORT:
             logger.error("Phrasal processing not supported in this BookWyrm client version")
-            return False
-            
-        extractions_path = DATA_DIR / extractions_file
-        if not extractions_path.exists():
-            logger.error(f"Extractions file not found: {extractions_path}")
-            return False
-            
-        try:
-            # Load extractions
-            df = pd.read_parquet(extractions_path)
-            
-            if df.empty:
-                logger.warning("No extractions found")
-                return False
-                
-            logger.info(f"Found {len(df)} text extractions to process")
-            
-            # Apply limit if specified
-            if limit:
-                df = df.head(limit)
-                logger.info(f"Processing limited to {len(df)} extractions")
-            
-            # Check for existing phrases
-            output_path = DATA_DIR / output_file
-            existing_hashes = set()
-            existing_data = []
-            
-            if output_path.exists():
-                try:
-                    existing_df = pd.read_parquet(output_path)
-                    existing_hashes = set(existing_df['file_hash'])
-                    existing_data = existing_df.to_dict('records')
-                    logger.info(f"Found {len(existing_data)} existing phrase records")
-                except Exception as e:
-                    logger.warning(f"Could not load existing phrases: {e}")
-            
-            # Process each extraction
-            all_phrases = []
-            processed_count = 0
-            skipped_count = 0
-            error_count = 0
-            
-            for _, row in df.iterrows():
-                file_hash = row['file_hash']
-                file_name = row['file_name']
-                extracted_text = row['extracted_text']
-                
-                # Skip if already processed
-                if file_hash in existing_hashes:
-                    skipped_count += 1
-                    continue
-                
-                # Update progress
-                if progress_callback:
-                    progress_callback({
-                        'current_file': file_name,
-                        'processed': processed_count,
-                        'total': len(df),
-                        'skipped': skipped_count,
-                        'errors': error_count
-                    })
-                
-                try:
-                    # Create phrasal processing request
-                    request = ProcessTextRequest(
-                        text=extracted_text,
-                        response_format=ResponseFormat.with_offsets,
-                        spacy_model="en_core_web_sm"
-                    )
-                    
-                    # Process text into phrases
-                    phrases = []
-                    phrase_count = 0
-                    
-                    for response in self.bookwyrm_client.process_text(request):
-                        if hasattr(response, 'text'):  # PhraseResult
-                            phrases.append({
-                                'file_hash': file_hash,
-                                'file_name': file_name,
-                                'phrase_count': phrase_count,
-                                'phrase': response.text,
-                                'start_char': response.start_char,
-                                'end_char': response.end_char
-                            })
-                            phrase_count += 1
-                    
-                    all_phrases.extend(phrases)
-                    processed_count += 1
-                    logger.info(f"Processed {len(phrases)} phrases from {file_name}")
-                    
-                except Exception as e:
-                    error_count += 1
-                    logger.error(f"Failed to process phrases for {file_name}: {e}")
-            
-            # Final progress update
-            if progress_callback:
-                progress_callback({
-                    'current_file': 'Saving phrases...',
-                    'processed': processed_count,
-                    'total': len(df),
-                    'skipped': skipped_count,
-                    'errors': error_count,
-                    'phase': 'saving'
-                })
-            
-            # Combine with existing data and save
-            all_phrase_data = existing_data + all_phrases
-            
-            if all_phrase_data:
-                df_phrases = pd.DataFrame(all_phrase_data)
-                df_phrases.to_parquet(output_path, index=False)
-                logger.info(f"Saved {len(all_phrase_data)} total phrase records to {output_path}")
-                return True
-            else:
-                logger.warning("No phrases to save")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error processing phrases: {e}")
-            return False
-
-    def process_summaries_from_content(
-        self,
-        index_file: str = "google_drive_index.parquet",
-        pdf_extractions_file: str = "pdf_extractions.parquet",
-        output_file: str = "content_summaries.parquet",
-        progress_callback=None,
-        limit: Optional[int] = None,
-        max_tokens: int = 10000
-    ) -> bool:
-        """Create summaries from both raw text content and PDF extractions using BookWyrm API."""
-        
-        if not self.bookwyrm_client:
-            logger.error("BookWyrm client not available for summarization")
-            return False
-            
-        if not HAS_PDF_SUPPORT or not SummarizeRequest:
-            logger.error("Summarization not supported in this BookWyrm client version")
             return False
             
         index_path = DATA_DIR / index_file
@@ -990,17 +853,17 @@ class GoogleDriveProcessor:
                     })
             
             if not content_files:
-                logger.warning("No files with content found for summarization")
+                logger.warning("No files with content found for phrasal processing")
                 return False
                 
-            logger.info(f"Found {len(content_files)} files with content to summarize")
+            logger.info(f"Found {len(content_files)} files with content to process into phrases")
             
             # Apply limit if specified
             if limit:
                 content_files = content_files[:limit]
                 logger.info(f"Processing limited to {len(content_files)} files")
             
-            # Check for existing summaries
+            # Check for existing phrases
             output_path = DATA_DIR / output_file
             existing_hashes = set()
             existing_data = []
@@ -1010,12 +873,12 @@ class GoogleDriveProcessor:
                     existing_df = pd.read_parquet(output_path)
                     existing_hashes = set(existing_df['file_hash'])
                     existing_data = existing_df.to_dict('records')
-                    logger.info(f"Found {len(existing_data)} existing summaries")
+                    logger.info(f"Found {len(existing_data)} existing phrase records")
                 except Exception as e:
-                    logger.warning(f"Could not load existing summaries: {e}")
+                    logger.warning(f"Could not load existing phrases: {e}")
             
-            # Process each file for summarization
-            summaries = []
+            # Process each file for phrasal processing
+            all_phrases = []
             processed_count = 0
             skipped_count = 0
             error_count = 0
@@ -1041,6 +904,171 @@ class GoogleDriveProcessor:
                     })
                 
                 try:
+                    # Create phrasal processing request
+                    request = ProcessTextRequest(
+                        text=content,
+                        response_format=ResponseFormat.with_offsets,
+                        spacy_model="en_core_web_sm"
+                    )
+                    
+                    # Process text into phrases
+                    phrases = []
+                    phrase_count = 0
+                    
+                    for response in self.bookwyrm_client.process_text(request):
+                        if hasattr(response, 'text'):  # PhraseResult
+                            phrases.append({
+                                'file_hash': file_hash,
+                                'file_name': file_name,
+                                'content_source': file_info['content_source'],
+                                'phrase_count': phrase_count,
+                                'phrase': response.text,
+                                'start_char': response.start_char,
+                                'end_char': response.end_char,
+                                'mime_type': file_info['mime_type'],
+                                'category': file_info['category'],
+                                'language': file_info['language']
+                            })
+                            phrase_count += 1
+                    
+                    all_phrases.extend(phrases)
+                    processed_count += 1
+                    logger.info(f"Processed {len(phrases)} phrases from {file_name}")
+                    
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"Failed to process phrases for {file_name}: {e}")
+            
+            # Final progress update
+            if progress_callback:
+                progress_callback({
+                    'current_file': 'Saving phrases...',
+                    'processed': processed_count,
+                    'total': len(content_files),
+                    'skipped': skipped_count,
+                    'errors': error_count,
+                    'phase': 'saving'
+                })
+            
+            # Combine with existing data and save
+            all_phrase_data = existing_data + all_phrases
+            
+            if all_phrase_data:
+                df_phrases = pd.DataFrame(all_phrase_data)
+                df_phrases.to_parquet(output_path, index=False)
+                logger.info(f"Saved {len(all_phrase_data)} total phrase records to {output_path}")
+                return True
+            else:
+                logger.warning("No phrases to save")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error processing phrases: {e}")
+            return False
+
+    def process_summaries_from_phrases(
+        self,
+        phrases_file: str = "content_phrases.parquet",
+        output_file: str = "content_summaries.parquet",
+        progress_callback=None,
+        limit: Optional[int] = None,
+        max_tokens: int = 10000
+    ) -> bool:
+        """Create summaries from phrasal content using BookWyrm API."""
+        
+        if not self.bookwyrm_client:
+            logger.error("BookWyrm client not available for summarization")
+            return False
+            
+        if not HAS_PDF_SUPPORT or not SummarizeRequest:
+            logger.error("Summarization not supported in this BookWyrm client version")
+            return False
+            
+        phrases_path = DATA_DIR / phrases_file
+        if not phrases_path.exists():
+            logger.error(f"Phrases file not found: {phrases_path}")
+            return False
+            
+        try:
+            # Load phrases
+            df_phrases = pd.read_parquet(phrases_path)
+            
+            if df_phrases.empty:
+                logger.warning("No phrases found for summarization")
+                return False
+            
+            # Group phrases by file_hash to reconstruct full text per file
+            files_to_summarize = []
+            
+            for file_hash, group in df_phrases.groupby('file_hash'):
+                # Sort phrases by phrase_count to maintain order
+                sorted_phrases = group.sort_values('phrase_count')
+                
+                # Reconstruct full text from phrases
+                full_text = ' '.join(sorted_phrases['phrase'].tolist())
+                
+                # Get metadata from first phrase record
+                first_record = sorted_phrases.iloc[0]
+                
+                files_to_summarize.append({
+                    'file_hash': file_hash,
+                    'file_name': first_record['file_name'],
+                    'content': full_text,
+                    'content_source': first_record['content_source'],
+                    'mime_type': first_record['mime_type'],
+                    'category': first_record['category'],
+                    'language': first_record['language'],
+                    'phrase_count': len(sorted_phrases)
+                })
+            
+            logger.info(f"Found {len(files_to_summarize)} files with phrases to summarize")
+            
+            # Apply limit if specified
+            if limit:
+                files_to_summarize = files_to_summarize[:limit]
+                logger.info(f"Processing limited to {len(files_to_summarize)} files")
+            
+            # Check for existing summaries
+            output_path = DATA_DIR / output_file
+            existing_hashes = set()
+            existing_data = []
+            
+            if output_path.exists():
+                try:
+                    existing_df = pd.read_parquet(output_path)
+                    existing_hashes = set(existing_df['file_hash'])
+                    existing_data = existing_df.to_dict('records')
+                    logger.info(f"Found {len(existing_data)} existing summaries")
+                except Exception as e:
+                    logger.warning(f"Could not load existing summaries: {e}")
+            
+            # Process each file for summarization
+            summaries = []
+            processed_count = 0
+            skipped_count = 0
+            error_count = 0
+            
+            for file_info in files_to_summarize:
+                file_hash = file_info['file_hash']
+                file_name = file_info['file_name']
+                content = file_info['content']
+                
+                # Skip if already processed
+                if file_hash in existing_hashes:
+                    skipped_count += 1
+                    continue
+                
+                # Update progress
+                if progress_callback:
+                    progress_callback({
+                        'current_file': file_name,
+                        'processed': processed_count,
+                        'total': len(files_to_summarize),
+                        'skipped': skipped_count,
+                        'errors': error_count
+                    })
+                
+                try:
                     # Create summarization request
                     request = SummarizeRequest(
                         content=content,
@@ -1058,6 +1086,7 @@ class GoogleDriveProcessor:
                         'content_source': file_info['content_source'],
                         'original_length': len(content),
                         'summary_length': len(response.summary),
+                        'phrase_count': file_info['phrase_count'],
                         'subsummary_count': response.subsummary_count,
                         'levels_used': response.levels_used,
                         'total_tokens': response.total_tokens,
@@ -1068,7 +1097,7 @@ class GoogleDriveProcessor:
                     })
                     
                     processed_count += 1
-                    logger.info(f"Created summary for {file_name} ({len(response.summary)} chars from {len(content)} chars)")
+                    logger.info(f"Created summary for {file_name} ({len(response.summary)} chars from {len(content)} chars, {file_info['phrase_count']} phrases)")
                     
                 except Exception as e:
                     error_count += 1
@@ -1079,7 +1108,7 @@ class GoogleDriveProcessor:
                 progress_callback({
                     'current_file': 'Saving summaries...',
                     'processed': processed_count,
-                    'total': len(content_files),
+                    'total': len(files_to_summarize),
                     'skipped': skipped_count,
                     'errors': error_count,
                     'phase': 'saving'

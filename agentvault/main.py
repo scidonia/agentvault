@@ -653,14 +653,17 @@ def extract_pdfs(
 
 @app.command("process-phrases")
 def process_phrases(
-    extractions_file: str = typer.Option(
-        "pdf_extractions.parquet", "--input", "-i", help="PDF extractions file to process"
+    index_file: str = typer.Option(
+        GOOGLE_DRIVE_INDEX_FILE, "--index", "-i", help="Google Drive index file to read from"
+    ),
+    pdf_extractions_file: str = typer.Option(
+        "pdf_extractions.parquet", "--pdf-extractions", help="PDF extractions file to use"
     ),
     output_file: str = typer.Option(
-        "pdf_phrases.parquet", "--output", "-o", help="Output file for phrases"
+        "content_phrases.parquet", "--output", "-o", help="Output file for phrases"
     ),
     limit: Optional[int] = typer.Option(
-        None, "--limit", "-n", help="Limit number of extractions to process"
+        None, "--limit", "-n", help="Limit number of files to process"
     ),
     force: bool = typer.Option(
         False, "--force", "-f", help="Force re-processing even if phrases exist"
@@ -669,15 +672,15 @@ def process_phrases(
         False, "--verbose", "-v", help="Show detailed progress information"
     ),
 ):
-    """Process extracted PDF text into phrases using BookWyrm phrasal API."""
+    """Process all text content into phrases using BookWyrm phrasal API."""
     
-    input_path = DATA_DIR / extractions_file
+    index_path = DATA_DIR / index_file
     output_path = DATA_DIR / output_file
     
-    if not input_path.exists():
-        console.print(f"❌ Extractions file {extractions_file} not found at {input_path}", style="red")
-        console.print("Please run PDF extraction first:", style="yellow")
-        console.print("  [bold]agentvault extract-pdfs[/bold]")
+    if not index_path.exists():
+        console.print(f"❌ Index file {index_file} not found at {index_path}", style="red")
+        console.print("Please run Google Drive indexing first:", style="yellow")
+        console.print("  [bold]agentvault index-drive[/bold]")
         raise typer.Exit(1)
     
     # Check if output already exists
@@ -757,8 +760,9 @@ def process_phrases(
                 if verbose and current_file and phase != 'saving':
                     console.print(f"  🔤 {current_file}", style="dim")
             
-            success = processor.process_phrases_from_extractions(
-                extractions_file=extractions_file,
+            success = processor.process_phrases_from_all_content(
+                index_file=index_file,
+                pdf_extractions_file=pdf_extractions_file,
                 output_file=output_file,
                 progress_callback=update_progress,
                 limit=limit
@@ -783,11 +787,8 @@ def process_phrases(
 
 @app.command("create-summaries")
 def create_summaries(
-    index_file: str = typer.Option(
-        GOOGLE_DRIVE_INDEX_FILE, "--index", "-i", help="Google Drive index file to read from"
-    ),
-    pdf_extractions_file: str = typer.Option(
-        "pdf_extractions.parquet", "--pdf-extractions", help="PDF extractions file to use"
+    phrases_file: str = typer.Option(
+        "content_phrases.parquet", "--phrases", "-p", help="Phrases file to summarize from"
     ),
     output_file: str = typer.Option(
         "content_summaries.parquet", "--output", "-o", help="Output file for summaries"
@@ -805,15 +806,15 @@ def create_summaries(
         False, "--verbose", "-v", help="Show detailed progress information"
     ),
 ):
-    """Create summaries from file content using BookWyrm summarization API."""
+    """Create summaries from phrasal content using BookWyrm summarization API."""
     
-    index_path = DATA_DIR / index_file
+    phrases_path = DATA_DIR / phrases_file
     output_path = DATA_DIR / output_file
     
-    if not index_path.exists():
-        console.print(f"❌ Index file {index_file} not found at {index_path}", style="red")
-        console.print("Please run Google Drive indexing first:", style="yellow")
-        console.print("  [bold]agentvault index-drive[/bold]")
+    if not phrases_path.exists():
+        console.print(f"❌ Phrases file {phrases_file} not found at {phrases_path}", style="red")
+        console.print("Please run phrasal processing first:", style="yellow")
+        console.print("  [bold]agentvault process-phrases[/bold]")
         raise typer.Exit(1)
     
     # Validate max_tokens
@@ -899,9 +900,8 @@ def create_summaries(
                 if verbose and current_file and phase != 'saving':
                     console.print(f"  📝 {current_file}", style="dim")
             
-            success = processor.process_summaries_from_content(
-                index_file=index_file,
-                pdf_extractions_file=pdf_extractions_file,
+            success = processor.process_summaries_from_phrases(
+                phrases_file=phrases_file,
                 output_file=output_file,
                 progress_callback=update_progress,
                 limit=limit,
