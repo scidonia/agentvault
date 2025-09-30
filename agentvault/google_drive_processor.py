@@ -1825,7 +1825,7 @@ class GoogleDriveProcessor:
                         # Create records for both indexes using Pinecone's integrated embedding (api-rag style)
                         # Dense index record - flat structure like api-rag
                         dense_record = {
-                            '_id': file_hash,
+                            'id': file_hash,
                             'text': combined_text,
                             'file_hash': file_hash,
                             'title': row.get('title', ''),
@@ -1849,7 +1849,7 @@ class GoogleDriveProcessor:
                         
                         # Sparse index record - flat structure like api-rag
                         sparse_record = {
-                            '_id': file_hash,
+                            'id': file_hash,
                             'text': combined_text,
                             'file_hash': file_hash,
                             'title': row.get('title', ''),
