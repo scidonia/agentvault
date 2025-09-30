@@ -975,6 +975,12 @@ def test_summarize(
                     import tempfile
                     import os
                     
+                    # Create JSONL content from phrases array
+                    jsonl_lines = []
+                    for phrase in phrases_array:
+                        jsonl_lines.append(json.dumps(phrase))
+                    jsonl_content = '\n'.join(jsonl_lines)
+                    
                     # Save JSONL to a temporary file
                     with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
                         f.write(jsonl_content)
