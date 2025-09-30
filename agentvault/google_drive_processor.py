@@ -1078,17 +1078,29 @@ class GoogleDriveProcessor:
                     })
                 
                 try:
-                    # Validate JSONL content
-                    if not jsonl_content or len(jsonl_content.strip()) < 10:
-                        logger.warning(f"Skipping {file_name}: JSONL content too short")
+                    # Reconstruct plain text from phrases for summarization
+                    phrase_texts = []
+                    for line in jsonl_content.split('\n'):
+                        if line.strip():
+                            try:
+                                phrase_data = json.loads(line)
+                                phrase_texts.append(phrase_data['text'])
+                            except json.JSONDecodeError:
+                                continue
+                    
+                    plain_content = ' '.join(phrase_texts)
+                    
+                    # Validate content
+                    if not plain_content or len(plain_content.strip()) < 10:
+                        logger.warning(f"Skipping {file_name}: content too short")
                         error_count += 1
                         continue
                     
-                    logger.info(f"Sending JSONL content ({len(jsonl_content)} chars) for summarization of {file_name}")
+                    logger.info(f"Sending plain text content ({len(plain_content)} chars) for summarization of {file_name}")
                     
-                    # Create summarization request with JSONL content (like BookWyrm CLI)
+                    # Create summarization request with plain text content
                     request = SummarizeRequest(
-                        content=jsonl_content,
+                        content=plain_content,
                         max_tokens=max_tokens,
                         debug=False
                     )
@@ -1101,7 +1113,7 @@ class GoogleDriveProcessor:
                         'file_name': file_name,
                         'summary': response.summary,
                         'content_source': file_info['content_source'],
-                        'original_length': len(jsonl_content),
+                        'original_length': len(plain_content),
                         'summary_length': len(response.summary),
                         'phrase_count': file_info['phrase_count'],
                         'subsummary_count': response.subsummary_count,
