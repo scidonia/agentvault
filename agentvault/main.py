@@ -870,7 +870,7 @@ def test_summarize(
         1, "--files", help="Number of files to test (default: 1)"
     ),
     summarize_endpoint: str = typer.Option(
-        "http://localhost:8000", "--endpoint", help="Summarize endpoint URL"
+        "https://api.bookwyrm.ai:443", "--endpoint", help="Summarize endpoint URL"
     ),
 ):
     """Test summarization using the summarize-endpoint service."""
@@ -997,8 +997,8 @@ def test_summarize(
                 console.print("⏰ Request timed out", style="red")
             except httpx.ConnectError:
                 console.print(f"🔌 Could not connect to {summarize_endpoint}", style="red")
-                console.print("💡 Make sure the summarize endpoint is running:", style="yellow")
-                console.print("   cd ../summarize-endpoint && summarize", style="yellow")
+                console.print("💡 Make sure the summarize endpoint is accessible:", style="yellow")
+                console.print("   Check your internet connection and API endpoint", style="yellow")
             except Exception as e:
                 console.print(f"❌ API call failed: {e}", style="red")
                 console.print(f"🔍 Error type: {type(e).__name__}", style="red")
@@ -1029,7 +1029,7 @@ def create_summaries(
         False, "--verbose", "-v", help="Show detailed progress information"
     ),
     summarize_endpoint: str = typer.Option(
-        "http://localhost:8000", "--endpoint", help="Summarize endpoint URL"
+        "https://api.bookwyrm.ai:443", "--endpoint", help="Summarize endpoint URL"
     ),
 ):
     """Create summaries from phrasal content using the summarize-endpoint service."""

@@ -1174,7 +1174,7 @@ class GoogleDriveProcessor:
         progress_callback=None,
         limit: Optional[int] = None,
         max_tokens: int = 10000,
-        endpoint_url: str = "http://localhost:8000",
+        endpoint_url: str = "https://api.bookwyrm.ai:443",
         api_token: str = None
     ) -> bool:
         """Create summaries from phrasal content using the summarize-endpoint service."""
