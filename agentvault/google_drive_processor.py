@@ -54,7 +54,7 @@ try:
     HAS_PINECONE_SUPPORT = True
 except ImportError as e:
     print(f"⚠️  Pinecone indexing not available: {e}")
-    print("To enable Pinecone indexing, install: uv add pinecone-client")
+    print("To enable Pinecone indexing, install: uv add pinecone")
     HAS_PINECONE_SUPPORT = False
     pinecone = None
     ServerlessSpec = None

@@ -1089,7 +1089,7 @@ def index_titles(
         console.print("❌ Pinecone client not available", style="red")
         console.print("\n📋 [bold]Installation Instructions:[/bold]", style="yellow")
         console.print("1. Install Pinecone dependencies:", style="yellow")
-        console.print("   [cyan]uv add pinecone-client[/cyan]", style="yellow")
+        console.print("   [cyan]uv add pinecone[/cyan]", style="yellow")
         console.print("2. Run the command again", style="yellow")
         raise typer.Exit(1)
     
