@@ -47,7 +47,15 @@ except ImportError as e:
     print("Try: pip install bookwyrm-client")
     raise
 
-from .config import DATA_DIR, EMBEDDING_MODEL
+from .config import (
+    DATA_DIR, 
+    EMBEDDING_MODEL, 
+    PINECONE_API_KEY, 
+    PINECONE_ENVIRONMENT,
+    TITLES_DENSE_INDEX,
+    TITLES_SPARSE_INDEX,
+    EMBEDDING_DIMENSION
+)
 
 # Google Drive API scopes
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
@@ -62,7 +70,11 @@ class GoogleDriveProcessor:
         self.service = None
         self.credentials = None
         self.bookwyrm_client = None
+        self.pinecone_client = None
+        self.embedding_model = None
+        self.tfidf_vectorizer = None
         self._init_bookwyrm_client()
+        self._init_pinecone_client()
     
     def _init_bookwyrm_client(self):
         """Initialize BookWyrm client for classification."""
@@ -1632,4 +1644,294 @@ class GoogleDriveProcessor:
                 
         except Exception as e:
             logger.error(f"Error creating title cards: {e}")
+            return False
+
+    def _init_pinecone_client(self):
+        """Initialize Pinecone client and embedding models."""
+        if not HAS_PINECONE_SUPPORT:
+            logger.warning("Pinecone support not available - indexing will be skipped")
+            return
+            
+        if not PINECONE_API_KEY:
+            logger.warning("No PINECONE_API_KEY found - indexing will be skipped")
+            return
+            
+        try:
+            # Initialize Pinecone
+            pinecone.init(
+                api_key=PINECONE_API_KEY,
+                environment=PINECONE_ENVIRONMENT
+            )
+            self.pinecone_client = pinecone
+            
+            # Initialize embedding model for dense vectors
+            self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+            
+            # Initialize TF-IDF vectorizer for sparse vectors
+            self.tfidf_vectorizer = TfidfVectorizer(
+                max_features=10000,
+                stop_words='english',
+                ngram_range=(1, 2)
+            )
+            
+            logger.info("Pinecone client and embedding models initialized successfully")
+            
+        except Exception as e:
+            logger.warning(f"Failed to initialize Pinecone client: {e}")
+            self.pinecone_client = None
+            self.embedding_model = None
+            self.tfidf_vectorizer = None
+
+    def _ensure_pinecone_indexes(self):
+        """Ensure Pinecone indexes exist, create them if they don't."""
+        if not self.pinecone_client:
+            return False
+            
+        try:
+            existing_indexes = self.pinecone_client.list_indexes()
+            
+            # Create dense index if it doesn't exist
+            if TITLES_DENSE_INDEX not in existing_indexes:
+                logger.info(f"Creating dense index: {TITLES_DENSE_INDEX}")
+                self.pinecone_client.create_index(
+                    name=TITLES_DENSE_INDEX,
+                    dimension=EMBEDDING_DIMENSION,
+                    metric="cosine"
+                )
+            
+            # Create sparse index if it doesn't exist
+            if TITLES_SPARSE_INDEX not in existing_indexes:
+                logger.info(f"Creating sparse index: {TITLES_SPARSE_INDEX}")
+                self.pinecone_client.create_index(
+                    name=TITLES_SPARSE_INDEX,
+                    dimension=10000,  # TF-IDF max_features
+                    metric="cosine"
+                )
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error ensuring Pinecone indexes: {e}")
+            return False
+
+    def _create_dense_embedding(self, text: str) -> List[float]:
+        """Create dense embedding using sentence transformer."""
+        if not self.embedding_model:
+            return []
+            
+        try:
+            embedding = self.embedding_model.encode(text)
+            return embedding.tolist()
+        except Exception as e:
+            logger.error(f"Error creating dense embedding: {e}")
+            return []
+
+    def _create_sparse_embedding(self, texts: List[str], text: str) -> Dict[str, float]:
+        """Create sparse embedding using TF-IDF."""
+        if not self.tfidf_vectorizer:
+            return {}
+            
+        try:
+            # Fit vectorizer on all texts if not already fitted
+            if not hasattr(self.tfidf_vectorizer, 'vocabulary_'):
+                self.tfidf_vectorizer.fit(texts)
+            
+            # Transform the specific text
+            tfidf_matrix = self.tfidf_vectorizer.transform([text])
+            
+            # Convert to sparse dictionary format
+            sparse_dict = {}
+            coo = tfidf_matrix.tocoo()
+            for i, j, v in zip(coo.row, coo.col, coo.data):
+                if v > 0:  # Only include non-zero values
+                    sparse_dict[str(j)] = float(v)
+            
+            return sparse_dict
+            
+        except Exception as e:
+            logger.error(f"Error creating sparse embedding: {e}")
+            return {}
+
+    def index_title_cards_in_pinecone(
+        self,
+        title_cards_file: str = "title_cards.parquet",
+        progress_callback=None,
+        limit: Optional[int] = None,
+        batch_size: int = 100
+    ) -> bool:
+        """Index title cards in Pinecone for both dense and sparse search."""
+        
+        if not HAS_PINECONE_SUPPORT:
+            logger.error("Pinecone support not available")
+            return False
+            
+        if not self.pinecone_client:
+            logger.error("Pinecone client not initialized")
+            return False
+            
+        title_cards_path = DATA_DIR / title_cards_file
+        if not title_cards_path.exists():
+            logger.error(f"Title cards file not found: {title_cards_path}")
+            return False
+            
+        try:
+            # Ensure indexes exist
+            if not self._ensure_pinecone_indexes():
+                logger.error("Failed to ensure Pinecone indexes exist")
+                return False
+            
+            # Load title cards
+            df_title_cards = pd.read_parquet(title_cards_path)
+            
+            if df_title_cards.empty:
+                logger.warning("No title cards found for indexing")
+                return False
+            
+            logger.info(f"Found {len(df_title_cards)} title cards to index")
+            
+            # Apply limit if specified
+            if limit:
+                df_title_cards = df_title_cards.head(limit)
+                logger.info(f"Processing limited to {len(df_title_cards)} title cards")
+            
+            # Get Pinecone index connections
+            dense_index = self.pinecone_client.Index(TITLES_DENSE_INDEX)
+            sparse_index = self.pinecone_client.Index(TITLES_SPARSE_INDEX)
+            
+            # Prepare all texts for TF-IDF fitting
+            all_texts = []
+            for _, row in df_title_cards.iterrows():
+                # Combine title, author, and summary for indexing
+                text_parts = []
+                if row.get('title'):
+                    text_parts.append(row['title'])
+                if row.get('author'):
+                    text_parts.append(row['author'])
+                if row.get('summary'):
+                    text_parts.append(row['summary'])
+                
+                combined_text = ' '.join(text_parts)
+                all_texts.append(combined_text)
+            
+            # Fit TF-IDF vectorizer on all texts
+            if self.tfidf_vectorizer and all_texts:
+                logger.info("Fitting TF-IDF vectorizer on all texts...")
+                self.tfidf_vectorizer.fit(all_texts)
+            
+            # Process title cards in batches
+            processed_count = 0
+            error_count = 0
+            dense_vectors = []
+            sparse_vectors = []
+            
+            for i in range(0, len(df_title_cards), batch_size):
+                batch = df_title_cards.iloc[i:i + batch_size]
+                batch_dense = []
+                batch_sparse = []
+                
+                for _, row in batch.iterrows():
+                    file_hash = row['file_hash']
+                    
+                    # Update progress
+                    if progress_callback:
+                        progress_callback({
+                            'current_file': row.get('title', 'Unknown'),
+                            'processed': processed_count,
+                            'total': len(df_title_cards),
+                            'errors': error_count
+                        })
+                    
+                    try:
+                        # Combine text for embedding
+                        text_parts = []
+                        if row.get('title'):
+                            text_parts.append(row['title'])
+                        if row.get('author'):
+                            text_parts.append(row['author'])
+                        if row.get('summary'):
+                            text_parts.append(row['summary'])
+                        
+                        combined_text = ' '.join(text_parts)
+                        
+                        if not combined_text.strip():
+                            logger.warning(f"Skipping empty text for {file_hash}")
+                            error_count += 1
+                            continue
+                        
+                        # Create dense embedding
+                        dense_embedding = self._create_dense_embedding(combined_text)
+                        
+                        # Create sparse embedding
+                        sparse_embedding = self._create_sparse_embedding(all_texts, combined_text)
+                        
+                        # Prepare metadata
+                        metadata = {
+                            'file_hash': file_hash,
+                            'title': row.get('title', ''),
+                            'author': row.get('author', ''),
+                            'file_name': row.get('file_name', ''),
+                            'category': row.get('category', ''),
+                            'subcategory': row.get('subcategory', ''),
+                            'language': row.get('language', ''),
+                            'mime_type': row.get('mime_type', ''),
+                            'content_source': row.get('content_source', ''),
+                            'summary_length': int(row.get('summary_length', 0)),
+                            'phrase_count': int(row.get('phrase_count', 0)),
+                            'file_size': int(row.get('file_size', 0)),
+                            'path': row.get('path', ''),
+                            'web_view_link': row.get('web_view_link', ''),
+                            'title_extracted_from': row.get('title_extracted_from', ''),
+                            'classification_confidence': float(row.get('classification_confidence', 0.0))
+                        }
+                        
+                        # Add to batches
+                        if dense_embedding:
+                            batch_dense.append({
+                                'id': file_hash,
+                                'values': dense_embedding,
+                                'metadata': metadata
+                            })
+                        
+                        if sparse_embedding:
+                            batch_sparse.append({
+                                'id': file_hash,
+                                'values': sparse_embedding,
+                                'metadata': metadata
+                            })
+                        
+                        processed_count += 1
+                        
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(f"Error processing title card {file_hash}: {e}")
+                
+                # Upsert batches to Pinecone
+                try:
+                    if batch_dense:
+                        dense_index.upsert(vectors=batch_dense)
+                        logger.info(f"Upserted {len(batch_dense)} dense vectors to Pinecone")
+                    
+                    if batch_sparse:
+                        sparse_index.upsert(vectors=batch_sparse)
+                        logger.info(f"Upserted {len(batch_sparse)} sparse vectors to Pinecone")
+                        
+                except Exception as e:
+                    logger.error(f"Error upserting batch to Pinecone: {e}")
+                    error_count += len(batch)
+            
+            # Final progress update
+            if progress_callback:
+                progress_callback({
+                    'current_file': 'Indexing completed',
+                    'processed': processed_count,
+                    'total': len(df_title_cards),
+                    'errors': error_count,
+                    'phase': 'completed'
+                })
+            
+            logger.info(f"Indexing completed: {processed_count} processed, {error_count} errors")
+            return error_count == 0
+            
+        except Exception as e:
+            logger.error(f"Error indexing title cards in Pinecone: {e}")
             return False

@@ -1041,6 +1041,127 @@ def create_title_cards(
     console.print(f"📁 Title cards saved to: [bold blue]{output_path}[/bold blue]")
 
 
+@app.command("index-titles")
+def index_titles(
+    title_cards_file: str = typer.Option(
+        "title_cards.parquet", "--title-cards", "-t", help="Title cards file to index"
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-n", help="Limit number of title cards to index"
+    ),
+    batch_size: int = typer.Option(
+        100, "--batch-size", "-b", help="Batch size for Pinecone upserts"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Force re-indexing even if vectors exist"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show detailed progress information"
+    ),
+):
+    """Index title cards in Pinecone for dense and sparse search."""
+    
+    title_cards_path = DATA_DIR / title_cards_file
+    
+    if not title_cards_path.exists():
+        console.print(f"❌ Title cards file {title_cards_file} not found at {title_cards_path}", style="red")
+        console.print("Please run title card creation first:", style="yellow")
+        console.print("  [bold]agentvault create-title-cards[/bold]")
+        raise typer.Exit(1)
+    
+    # Check for Pinecone API key
+    pinecone_api_key = os.getenv("PINECONE_API_KEY")
+    if not pinecone_api_key:
+        console.print("❌ PINECONE_API_KEY environment variable not found", style="red")
+        console.print("\n📋 [bold]Setup Instructions:[/bold]", style="yellow")
+        console.print("1. Get an API key from https://pinecone.io", style="yellow")
+        console.print("2. Set environment variable:", style="yellow")
+        console.print("   [cyan]export PINECONE_API_KEY='your-api-key-here'[/cyan]", style="yellow")
+        console.print("3. Optionally set environment:", style="yellow")
+        console.print("   [cyan]export PINECONE_ENVIRONMENT='europe-west4-gcp'[/cyan]", style="yellow")
+        console.print("4. Run the command again", style="yellow")
+        raise typer.Exit(1)
+    
+    # Check for Pinecone support
+    processor = GoogleDriveProcessor()
+    
+    if not processor.pinecone_client:
+        console.print("❌ Pinecone client not available", style="red")
+        console.print("\n📋 [bold]Installation Instructions:[/bold]", style="yellow")
+        console.print("1. Install Pinecone dependencies:", style="yellow")
+        console.print("   [cyan]uv add pinecone-client sentence-transformers scikit-learn[/cyan]", style="yellow")
+        console.print("2. Run the command again", style="yellow")
+        raise typer.Exit(1)
+    
+    console.print(Panel.fit("🔍 Starting Title Card Indexing in Pinecone", style="bold blue"))
+    console.print(f"📊 Dense index: [cyan]titles-dense[/cyan]", style="dim")
+    console.print(f"📊 Sparse index: [cyan]titles-sparse[/cyan]", style="dim")
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TextColumn("[bold blue]{task.fields[processed]} processed"),
+        TextColumn("[bold red]{task.fields[errors]} errors"),
+        console=console,
+        transient=False,
+    ) as progress:
+        
+        try:
+            # Processing task
+            process_task = progress.add_task(
+                "🔍 Indexing title cards...", total=None, processed=0, errors=0
+            )
+            
+            def update_progress(stats):
+                phase = stats.get('phase', 'processing')
+                current_file = stats.get('current_file', '')
+                
+                if phase == 'completed':
+                    description = "✅ Indexing completed"
+                else:
+                    if verbose and current_file:
+                        description = f"🔍 Processing: {current_file}"
+                    else:
+                        description = f"🔍 Indexing title cards... ({stats['processed']} processed)"
+                
+                progress.update(
+                    process_task,
+                    description=description,
+                    total=stats.get('total', None),
+                    completed=stats['processed'],
+                    processed=stats['processed'],
+                    errors=stats['errors']
+                )
+                
+                if verbose and current_file and phase != 'completed':
+                    console.print(f"  🔍 {current_file}", style="dim")
+            
+            success = processor.index_title_cards_in_pinecone(
+                title_cards_file=title_cards_file,
+                progress_callback=update_progress,
+                limit=limit,
+                batch_size=batch_size
+            )
+            
+            if not success:
+                console.print("❌ Title card indexing failed", style="red")
+                raise typer.Exit(1)
+            
+            progress.update(process_task, description="✅ Indexing completed")
+            
+        except KeyboardInterrupt:
+            console.print("\n⚠️  Indexing interrupted by user", style="yellow")
+            raise typer.Exit(1)
+        except Exception as e:
+            console.print(f"❌ Error during indexing: {e}", style="red")
+            raise typer.Exit(1)
+    
+    console.print("✅ Title card indexing completed!", style="green bold")
+    console.print("🔍 Your title cards are now searchable in Pinecone!", style="green")
+
+
 @app.command("version")
 def version():
     """Show version information."""
