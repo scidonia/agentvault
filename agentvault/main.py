@@ -785,6 +785,80 @@ def process_phrases(
     console.print(f"📁 Phrases saved to: [bold blue]{output_path}[/bold blue]")
 
 
+@app.command("debug-phrases")
+def debug_phrases(
+    phrases_file: str = typer.Option(
+        "content_phrases.parquet", "--phrases", "-p", help="Phrases file to debug"
+    ),
+    limit: int = typer.Option(
+        3, "--limit", "-n", help="Number of files to show"
+    ),
+):
+    """Debug phrases file to see what JSONL content would be created."""
+    
+    phrases_path = DATA_DIR / phrases_file
+    
+    if not phrases_path.exists():
+        console.print(f"❌ Phrases file {phrases_file} not found at {phrases_path}", style="red")
+        raise typer.Exit(1)
+    
+    try:
+        import pandas as pd
+        df_phrases = pd.read_parquet(phrases_path)
+        
+        console.print(f"📊 Loaded {len(df_phrases)} phrase records", style="blue")
+        console.print(f"📊 Columns: {list(df_phrases.columns)}", style="blue")
+        console.print(f"📊 Unique files: {df_phrases['file_hash'].nunique()}", style="blue")
+        
+        # Show sample data
+        console.print("\n📋 Sample phrase records:", style="bold")
+        sample_df = df_phrases.head(5)
+        for _, row in sample_df.iterrows():
+            console.print(f"  File: {row.get('file_name', 'Unknown')}")
+            console.print(f"  Phrase: {row.get('phrase', 'No phrase')[:100]}...")
+            console.print(f"  Start: {row.get('start_char', 'None')}, End: {row.get('end_char', 'None')}")
+            console.print("")
+        
+        # Group by file and show JSONL that would be created
+        console.print("\n📝 JSONL content that would be created:", style="bold")
+        
+        count = 0
+        for file_hash, group in df_phrases.groupby('file_hash'):
+            if count >= limit:
+                break
+                
+            sorted_phrases = group.sort_values('phrase_count')
+            file_name = sorted_phrases.iloc[0]['file_name']
+            
+            console.print(f"\n🔍 File: {file_name} ({len(sorted_phrases)} phrases)")
+            
+            # Create JSONL content
+            jsonl_lines = []
+            for _, phrase_row in sorted_phrases.iterrows():
+                jsonl_line = {
+                    "text": phrase_row['phrase'],
+                    "start_char": phrase_row.get('start_char'),
+                    "end_char": phrase_row.get('end_char')
+                }
+                jsonl_lines.append(json.dumps(jsonl_line))
+            
+            jsonl_content = '\n'.join(jsonl_lines)
+            
+            console.print(f"📏 JSONL length: {len(jsonl_content)} chars")
+            console.print(f"📄 First 3 lines:")
+            for i, line in enumerate(jsonl_lines[:3]):
+                console.print(f"  {i+1}: {line[:120]}...")
+            
+            if len(jsonl_lines) > 3:
+                console.print(f"  ... and {len(jsonl_lines) - 3} more lines")
+            
+            count += 1
+            
+    except Exception as e:
+        console.print(f"❌ Error reading phrases file: {e}", style="red")
+        raise typer.Exit(1)
+
+
 @app.command("create-summaries")
 def create_summaries(
     phrases_file: str = typer.Option(
