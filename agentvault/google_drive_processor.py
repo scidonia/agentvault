@@ -997,24 +997,22 @@ class GoogleDriveProcessor:
                 logger.warning("No phrases found for summarization")
                 return False
             
-            # Group phrases by file_hash to create JSONL content per file
+            # Group phrases by file_hash to create phrases array per file
             files_to_summarize = []
             
             for file_hash, group in df_phrases.groupby('file_hash'):
                 # Sort phrases by phrase_count to maintain order
                 sorted_phrases = group.sort_values('phrase_count')
                 
-                # Create JSONL content from phrases (like BookWyrm CLI does)
-                jsonl_lines = []
+                # Create phrases array from phrases (as per BookWyrm API spec)
+                phrases_array = []
                 for _, phrase_row in sorted_phrases.iterrows():
-                    jsonl_line = {
+                    phrase_obj = {
                         "text": phrase_row['phrase'],
                         "start_char": phrase_row.get('start_char'),
                         "end_char": phrase_row.get('end_char')
                     }
-                    jsonl_lines.append(json.dumps(jsonl_line))
-                
-                jsonl_content = '\n'.join(jsonl_lines)
+                    phrases_array.append(phrase_obj)
                 
                 # Get metadata from first phrase record
                 first_record = sorted_phrases.iloc[0]
@@ -1022,7 +1020,7 @@ class GoogleDriveProcessor:
                 files_to_summarize.append({
                     'file_hash': file_hash,
                     'file_name': first_record['file_name'],
-                    'jsonl_content': jsonl_content,
+                    'phrases': phrases_array,
                     'content_source': first_record['content_source'],
                     'mime_type': first_record['mime_type'],
                     'category': first_record['category'],
@@ -1060,7 +1058,7 @@ class GoogleDriveProcessor:
             for file_info in files_to_summarize:
                 file_hash = file_info['file_hash']
                 file_name = file_info['file_name']
-                jsonl_content = file_info['jsonl_content']
+                phrases = file_info['phrases']
                 
                 # Skip if already processed
                 if file_hash in existing_hashes:
@@ -1078,58 +1076,33 @@ class GoogleDriveProcessor:
                     })
                 
                 try:
-                    # Validate JSONL content
-                    if not jsonl_content or len(jsonl_content.strip()) < 10:
-                        logger.warning(f"Skipping {file_name}: JSONL content too short")
+                    # Validate phrases array
+                    if not phrases or len(phrases) == 0:
+                        logger.warning(f"Skipping {file_name}: No phrases found")
                         error_count += 1
                         continue
                     
-                    # Debug: Log first few lines of JSONL content
-                    logger.info(f"Sending JSONL content ({len(jsonl_content)} chars) for summarization of {file_name}")
-                    lines = jsonl_content.split('\n')
-                    logger.info(f"First JSONL line: {lines[0][:200]}...")
-                    logger.info(f"Total JSONL lines: {len(lines)}")
+                    # Clean up phrases - ensure all required fields are present
+                    clean_phrases = []
+                    for phrase in phrases:
+                        if phrase.get('text') and len(phrase['text'].strip()) > 0:
+                            clean_phrase = {
+                                "text": phrase['text'],
+                                "start_char": phrase.get('start_char') if phrase.get('start_char') is not None else 0,
+                                "end_char": phrase.get('end_char') if phrase.get('end_char') is not None else len(phrase['text'])
+                            }
+                            clean_phrases.append(clean_phrase)
                     
-                    # Show first 3 lines for debugging
-                    for i, line in enumerate(lines[:3]):
-                        if line.strip():
-                            logger.info(f"JSONL line {i}: {line[:100]}...")
-                    
-                    # Validate JSONL format
-                    valid_lines = []
-                    for i, line in enumerate(lines):
-                        if line.strip():
-                            try:
-                                data = json.loads(line)
-                                # Ensure required fields exist and are valid
-                                if 'text' in data and data['text'] and len(data['text'].strip()) > 0:
-                                    # Clean up None values
-                                    clean_data = {
-                                        "text": data['text'],
-                                        "start_char": data.get('start_char') if data.get('start_char') is not None else 0,
-                                        "end_char": data.get('end_char') if data.get('end_char') is not None else len(data['text'])
-                                    }
-                                    valid_lines.append(json.dumps(clean_data))
-                            except (json.JSONDecodeError, KeyError) as e:
-                                logger.warning(f"Skipping invalid JSONL line {i} in {file_name}: {e}")
-                                continue
-                    
-                    if not valid_lines:
-                        logger.warning(f"Skipping {file_name}: No valid JSONL lines found")
+                    if not clean_phrases:
+                        logger.warning(f"Skipping {file_name}: No valid phrases found")
                         error_count += 1
                         continue
                     
-                    clean_jsonl_content = '\n'.join(valid_lines)
-                    logger.info(f"Using {len(valid_lines)} valid lines out of {len(lines)} total lines")
+                    logger.info(f"Sending {len(clean_phrases)} phrases for summarization of {file_name}")
                     
-                    # Show sample of cleaned content
-                    if valid_lines:
-                        logger.info(f"Sample cleaned JSONL line: {valid_lines[0][:150]}...")
-                        logger.info(f"Clean JSONL content length: {len(clean_jsonl_content)} chars")
-                    
-                    # Create summarization request with cleaned JSONL content
+                    # Create summarization request with phrases array
                     request = SummarizeRequest(
-                        content=clean_jsonl_content,
+                        phrases=clean_phrases,
                         max_tokens=max_tokens,
                         debug=False
                     )
@@ -1137,12 +1110,15 @@ class GoogleDriveProcessor:
                     # Make API call for summarization
                     response = self.bookwyrm_client.summarize(request)
                     
+                    # Calculate original length from phrases
+                    original_length = sum(len(p['text']) for p in clean_phrases)
+                    
                     summaries.append({
                         'file_hash': file_hash,
                         'file_name': file_name,
                         'summary': response.summary,
                         'content_source': file_info['content_source'],
-                        'original_length': len(clean_jsonl_content),
+                        'original_length': original_length,
                         'summary_length': len(response.summary),
                         'phrase_count': file_info['phrase_count'],
                         'subsummary_count': response.subsummary_count,

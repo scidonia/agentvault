@@ -908,20 +908,18 @@ def test_summarize(
             console.print(f"\n🔍 Testing file: {file_name}", style="bold")
             console.print(f"📊 Phrases: {len(sorted_phrases)}", style="dim")
             
-            # Create JSONL content
-            jsonl_lines = []
+            # Create phrases array
+            phrases_array = []
             for _, phrase_row in sorted_phrases.iterrows():
-                jsonl_line = {
+                phrase_obj = {
                     "text": phrase_row['phrase'],
                     "start_char": phrase_row.get('start_char'),
                     "end_char": phrase_row.get('end_char')
                 }
-                jsonl_lines.append(json.dumps(jsonl_line))
+                phrases_array.append(phrase_obj)
             
-            jsonl_content = '\n'.join(jsonl_lines)
-            
-            console.print(f"📏 JSONL content: {len(jsonl_content)} chars", style="dim")
-            console.print(f"📄 First line: {jsonl_lines[0][:100]}...", style="dim")
+            console.print(f"📏 Phrases array: {len(phrases_array)} phrases", style="dim")
+            console.print(f"📄 First phrase: {phrases_array[0]['text'][:100]}...", style="dim")
             
             # Test the API call
             console.print("🚀 Making API call...", style="yellow")
@@ -930,18 +928,24 @@ def test_summarize(
                 from bookwyrm.models import SummarizeRequest
                 
                 # First, let's try with a very simple test case
-                console.print("🧪 Testing with minimal JSONL content...", style="blue")
+                console.print("🧪 Testing with minimal phrases array...", style="blue")
                 
-                # Create a simple test JSONL with just one line
-                test_jsonl = '{"text": "This is a test document for summarization.", "start_char": 0, "end_char": 42}'
+                # Create a simple test phrases array
+                test_phrases = [
+                    {
+                        "text": "This is a test document for summarization.",
+                        "start_char": 0,
+                        "end_char": 42
+                    }
+                ]
                 
                 test_request = SummarizeRequest(
-                    content=test_jsonl,
+                    phrases=test_phrases,
                     max_tokens=1000,
                     debug=False
                 )
                 
-                console.print(f"📄 Test JSONL: {test_jsonl}", style="dim")
+                console.print(f"📄 Test phrases: {test_phrases}", style="dim")
                 console.print("📤 Sending test request to BookWyrm API...", style="blue")
                 
                 try:
@@ -950,10 +954,10 @@ def test_summarize(
                     console.print(f"📝 Test summary: {test_response.summary}", style="green")
                     
                     # Now try with the actual content
-                    console.print("\n🔄 Now trying with actual file content...", style="blue")
+                    console.print("\n🔄 Now trying with actual file phrases...", style="blue")
                     
                     request = SummarizeRequest(
-                        content=jsonl_content,
+                        phrases=phrases_array,
                         max_tokens=5000,
                         debug=True
                     )
@@ -1052,25 +1056,33 @@ def test_summarize(
                         console.print(f"📄 Response text: {e.response.text[:500]}...", style="red")
                 
                 # Try a simpler request
-                console.print("\n🔄 Trying with plain text instead of JSONL...", style="yellow")
+                console.print("\n🔄 Trying with single phrase...", style="yellow")
                 try:
-                    # Extract just the text from phrases
-                    plain_text = ' '.join([json.loads(line)['text'] for line in jsonl_lines])
+                    # Create a single phrase from all text
+                    all_text = ' '.join([phrase['text'] for phrase in phrases_array])
+                    
+                    simple_phrases = [
+                        {
+                            "text": all_text,
+                            "start_char": 0,
+                            "end_char": len(all_text)
+                        }
+                    ]
                     
                     simple_request = SummarizeRequest(
-                        content=plain_text,
+                        phrases=simple_phrases,
                         max_tokens=5000,
                         debug=False
                     )
                     
-                    console.print("📤 Sending plain text request...", style="blue")
+                    console.print("📤 Sending single phrase request...", style="blue")
                     response = processor.bookwyrm_client.summarize(simple_request)
                     
-                    console.print("✅ Plain text API call successful!", style="green")
+                    console.print("✅ Single phrase API call successful!", style="green")
                     console.print(f"📝 Summary: {response.summary[:200]}...", style="green")
                     
                 except Exception as e2:
-                    console.print(f"❌ Plain text also failed: {e2}", style="red")
+                    console.print(f"❌ Single phrase also failed: {e2}", style="red")
                 
     except Exception as e:
         console.print(f"❌ Test failed: {e}", style="red")
