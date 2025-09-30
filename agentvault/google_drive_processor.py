@@ -1087,8 +1087,13 @@ class GoogleDriveProcessor:
                     # Debug: Log first few lines of JSONL content
                     logger.info(f"Sending JSONL content ({len(jsonl_content)} chars) for summarization of {file_name}")
                     lines = jsonl_content.split('\n')
-                    logger.debug(f"First JSONL line: {lines[0][:200]}...")
-                    logger.debug(f"Total JSONL lines: {len(lines)}")
+                    logger.info(f"First JSONL line: {lines[0][:200]}...")
+                    logger.info(f"Total JSONL lines: {len(lines)}")
+                    
+                    # Show first 3 lines for debugging
+                    for i, line in enumerate(lines[:3]):
+                        if line.strip():
+                            logger.info(f"JSONL line {i}: {line[:100]}...")
                     
                     # Validate JSONL format
                     valid_lines = []
@@ -1116,6 +1121,11 @@ class GoogleDriveProcessor:
                     
                     clean_jsonl_content = '\n'.join(valid_lines)
                     logger.info(f"Using {len(valid_lines)} valid lines out of {len(lines)} total lines")
+                    
+                    # Show sample of cleaned content
+                    if valid_lines:
+                        logger.info(f"Sample cleaned JSONL line: {valid_lines[0][:150]}...")
+                        logger.info(f"Clean JSONL content length: {len(clean_jsonl_content)} chars")
                     
                     # Create summarization request with cleaned JSONL content
                     request = SummarizeRequest(
