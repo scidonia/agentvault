@@ -997,15 +997,24 @@ class GoogleDriveProcessor:
                 logger.warning("No phrases found for summarization")
                 return False
             
-            # Group phrases by file_hash to reconstruct full text per file
+            # Group phrases by file_hash to create JSONL content per file
             files_to_summarize = []
             
             for file_hash, group in df_phrases.groupby('file_hash'):
                 # Sort phrases by phrase_count to maintain order
                 sorted_phrases = group.sort_values('phrase_count')
                 
-                # Reconstruct full text from phrases
-                full_text = ' '.join(sorted_phrases['phrase'].tolist())
+                # Create JSONL content from phrases (like BookWyrm CLI does)
+                jsonl_lines = []
+                for _, phrase_row in sorted_phrases.iterrows():
+                    jsonl_line = {
+                        "text": phrase_row['phrase'],
+                        "start_char": phrase_row.get('start_char'),
+                        "end_char": phrase_row.get('end_char')
+                    }
+                    jsonl_lines.append(json.dumps(jsonl_line))
+                
+                jsonl_content = '\n'.join(jsonl_lines)
                 
                 # Get metadata from first phrase record
                 first_record = sorted_phrases.iloc[0]
@@ -1013,7 +1022,7 @@ class GoogleDriveProcessor:
                 files_to_summarize.append({
                     'file_hash': file_hash,
                     'file_name': first_record['file_name'],
-                    'content': full_text,
+                    'jsonl_content': jsonl_content,
                     'content_source': first_record['content_source'],
                     'mime_type': first_record['mime_type'],
                     'category': first_record['category'],
@@ -1051,7 +1060,7 @@ class GoogleDriveProcessor:
             for file_info in files_to_summarize:
                 file_hash = file_info['file_hash']
                 file_name = file_info['file_name']
-                content = file_info['content']
+                jsonl_content = file_info['jsonl_content']
                 
                 # Skip if already processed
                 if file_hash in existing_hashes:
@@ -1069,32 +1078,17 @@ class GoogleDriveProcessor:
                     })
                 
                 try:
-                    # Validate and clean content before sending
-                    if not content or len(content.strip()) < 10:
-                        logger.warning(f"Skipping {file_name}: content too short")
+                    # Validate JSONL content
+                    if not jsonl_content or len(jsonl_content.strip()) < 10:
+                        logger.warning(f"Skipping {file_name}: JSONL content too short")
                         error_count += 1
                         continue
                     
-                    # More aggressive content size limits for testing
-                    if len(content) > 50000:  # 50k chars limit
-                        content = content[:50000]
-                        logger.warning(f"Truncated content for {file_name} to 50k chars")
+                    logger.info(f"Sending JSONL content ({len(jsonl_content)} chars) for summarization of {file_name}")
                     
-                    # Clean content - remove excessive whitespace and control characters
-                    content = ' '.join(content.split())
-                    content = ''.join(char for char in content if ord(char) >= 32 or char in '\n\t')
-                    
-                    # Additional validation
-                    if len(content.strip()) < 50:
-                        logger.warning(f"Skipping {file_name}: content too short after cleaning")
-                        error_count += 1
-                        continue
-                    
-                    logger.info(f"Sending {len(content)} chars for summarization of {file_name}")
-                    
-                    # Create summarization request with plain content
+                    # Create summarization request with JSONL content (like BookWyrm CLI)
                     request = SummarizeRequest(
-                        content=content,
+                        content=jsonl_content,
                         max_tokens=max_tokens,
                         debug=False
                     )
@@ -1107,7 +1101,7 @@ class GoogleDriveProcessor:
                         'file_name': file_name,
                         'summary': response.summary,
                         'content_source': file_info['content_source'],
-                        'original_length': len(content),
+                        'original_length': len(jsonl_content),
                         'summary_length': len(response.summary),
                         'phrase_count': file_info['phrase_count'],
                         'subsummary_count': response.subsummary_count,
@@ -1120,7 +1114,7 @@ class GoogleDriveProcessor:
                     })
                     
                     processed_count += 1
-                    logger.info(f"Created summary for {file_name} ({len(response.summary)} chars from {len(content)} chars, {file_info['phrase_count']} phrases)")
+                    logger.info(f"Created summary for {file_name} ({len(response.summary)} chars from {file_info['phrase_count']} phrases)")
                     
                 except Exception as e:
                     error_count += 1
@@ -1128,8 +1122,6 @@ class GoogleDriveProcessor:
                     # Log more details for debugging
                     if hasattr(e, 'status_code'):
                         logger.error(f"HTTP Status: {e.status_code}")
-                    if len(content) > 50000:
-                        logger.error(f"Content length was {len(content)} chars - may be too large")
             
             # Final progress update
             if progress_callback:
