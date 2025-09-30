@@ -35,7 +35,7 @@ BOOKWYRM_API_URL = "https://api.bookwyrm.ai/classify"  # Placeholder
 
 # Pinecone configuration
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT", "us-east-1-aws")
+PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT", "europe-west4-gcp")
 TITLES_DENSE_INDEX = "titles-dense"
 TITLES_SPARSE_INDEX = "titles-sparse"
 EMBEDDING_DIMENSION = 384  # For sentence-transformers/all-MiniLM-L6-v2
