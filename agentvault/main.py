@@ -860,6 +860,131 @@ def debug_phrases(
         raise typer.Exit(1)
 
 
+@app.command("test-summarize")
+def test_summarize(
+    phrases_file: str = typer.Option(
+        "content_phrases.parquet", "--phrases", "-p", help="Phrases file to test with"
+    ),
+    file_limit: int = typer.Option(
+        1, "--files", help="Number of files to test (default: 1)"
+    ),
+):
+    """Test summarization with a single file to debug API issues."""
+    
+    phrases_path = DATA_DIR / phrases_file
+    
+    if not phrases_path.exists():
+        console.print(f"❌ Phrases file {phrases_file} not found at {phrases_path}", style="red")
+        raise typer.Exit(1)
+    
+    # Check prerequisites
+    processor = GoogleDriveProcessor()
+    
+    if not processor.bookwyrm_client:
+        console.print("❌ BookWyrm API key not found", style="red")
+        raise typer.Exit(1)
+    
+    from .google_drive_processor import HAS_PDF_SUPPORT
+    
+    if not HAS_PDF_SUPPORT:
+        console.print("❌ Summarization not supported in current BookWyrm client", style="red")
+        raise typer.Exit(1)
+    
+    try:
+        import pandas as pd
+        import json
+        df_phrases = pd.read_parquet(phrases_path)
+        
+        console.print(f"📊 Testing with {file_limit} file(s)", style="blue")
+        
+        # Get first file for testing
+        file_hashes = df_phrases['file_hash'].unique()[:file_limit]
+        
+        for file_hash in file_hashes:
+            group = df_phrases[df_phrases['file_hash'] == file_hash]
+            sorted_phrases = group.sort_values('phrase_count')
+            file_name = sorted_phrases.iloc[0]['file_name']
+            
+            console.print(f"\n🔍 Testing file: {file_name}", style="bold")
+            console.print(f"📊 Phrases: {len(sorted_phrases)}", style="dim")
+            
+            # Create JSONL content
+            jsonl_lines = []
+            for _, phrase_row in sorted_phrases.iterrows():
+                jsonl_line = {
+                    "text": phrase_row['phrase'],
+                    "start_char": phrase_row.get('start_char'),
+                    "end_char": phrase_row.get('end_char')
+                }
+                jsonl_lines.append(json.dumps(jsonl_line))
+            
+            jsonl_content = '\n'.join(jsonl_lines)
+            
+            console.print(f"📏 JSONL content: {len(jsonl_content)} chars", style="dim")
+            console.print(f"📄 First line: {jsonl_lines[0][:100]}...", style="dim")
+            
+            # Test the API call
+            console.print("🚀 Making API call...", style="yellow")
+            
+            try:
+                from bookwyrm.models import SummarizeRequest
+                
+                request = SummarizeRequest(
+                    content=jsonl_content,
+                    max_tokens=5000,  # Smaller for testing
+                    debug=True  # Enable debug mode
+                )
+                
+                console.print("📤 Sending request to BookWyrm API...", style="blue")
+                response = processor.bookwyrm_client.summarize(request)
+                
+                console.print("✅ API call successful!", style="green")
+                console.print(f"📝 Summary length: {len(response.summary)} chars", style="green")
+                console.print(f"🔢 Tokens used: {response.total_tokens}", style="green")
+                console.print(f"📊 Levels used: {response.levels_used}", style="green")
+                
+                console.print("\n📄 Summary:", style="bold")
+                console.print(Panel(response.summary, border_style="green"))
+                
+                if response.intermediate_summaries:
+                    console.print(f"\n🔍 Intermediate summaries: {len(response.intermediate_summaries)} levels", style="dim")
+                
+            except Exception as e:
+                console.print(f"❌ API call failed: {e}", style="red")
+                console.print(f"🔍 Error type: {type(e).__name__}", style="red")
+                
+                # Try to get more details
+                if hasattr(e, 'response'):
+                    console.print(f"📡 Response status: {e.response.status_code if e.response else 'None'}", style="red")
+                    if e.response and hasattr(e.response, 'text'):
+                        console.print(f"📄 Response text: {e.response.text[:500]}...", style="red")
+                
+                # Try a simpler request
+                console.print("\n🔄 Trying with plain text instead of JSONL...", style="yellow")
+                try:
+                    # Extract just the text from phrases
+                    plain_text = ' '.join([json.loads(line)['text'] for line in jsonl_lines])
+                    
+                    simple_request = SummarizeRequest(
+                        content=plain_text,
+                        max_tokens=5000,
+                        debug=False
+                    )
+                    
+                    console.print("📤 Sending plain text request...", style="blue")
+                    response = processor.bookwyrm_client.summarize(simple_request)
+                    
+                    console.print("✅ Plain text API call successful!", style="green")
+                    console.print(f"📝 Summary: {response.summary[:200]}...", style="green")
+                    
+                except Exception as e2:
+                    console.print(f"❌ Plain text also failed: {e2}", style="red")
+                
+    except Exception as e:
+        console.print(f"❌ Test failed: {e}", style="red")
+        raise typer.Exit(1)
+
+
 @app.command("create-summaries")
 def create_summaries(
     phrases_file: str = typer.Option(
