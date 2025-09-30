@@ -47,19 +47,17 @@ except ImportError as e:
     print("Try: pip install bookwyrm-client")
     raise
 
-# Import Pinecone and embedding libraries
+# Import Pinecone library
 try:
     import pinecone
-    from sentence_transformers import SentenceTransformer
-    from sklearn.feature_extraction.text import TfidfVectorizer
+    from pinecone import ServerlessSpec
     HAS_PINECONE_SUPPORT = True
 except ImportError as e:
     print(f"⚠️  Pinecone indexing not available: {e}")
-    print("To enable Pinecone indexing, install: uv add pinecone-client sentence-transformers scikit-learn")
+    print("To enable Pinecone indexing, install: uv add pinecone-client")
     HAS_PINECONE_SUPPORT = False
     pinecone = None
-    SentenceTransformer = None
-    TfidfVectorizer = None
+    ServerlessSpec = None
 
 from .config import (
     DATA_DIR, 
@@ -85,8 +83,6 @@ class GoogleDriveProcessor:
         self.credentials = None
         self.bookwyrm_client = None
         self.pinecone_client = None
-        self.embedding_model = None
-        self.tfidf_vectorizer = None
         self._init_bookwyrm_client()
         self._init_pinecone_client()
     
@@ -1661,7 +1657,7 @@ class GoogleDriveProcessor:
             return False
 
     def _init_pinecone_client(self):
-        """Initialize Pinecone client and embedding models."""
+        """Initialize Pinecone client."""
         if not HAS_PINECONE_SUPPORT:
             logger.warning("Pinecone support not available - indexing will be skipped")
             return
@@ -1672,29 +1668,12 @@ class GoogleDriveProcessor:
             
         try:
             # Initialize Pinecone
-            pinecone.init(
-                api_key=PINECONE_API_KEY,
-                environment=PINECONE_ENVIRONMENT
-            )
-            self.pinecone_client = pinecone
-            
-            # Initialize embedding model for dense vectors
-            self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
-            
-            # Initialize TF-IDF vectorizer for sparse vectors
-            self.tfidf_vectorizer = TfidfVectorizer(
-                max_features=10000,
-                stop_words='english',
-                ngram_range=(1, 2)
-            )
-            
-            logger.info("Pinecone client and embedding models initialized successfully")
+            self.pinecone_client = pinecone.Pinecone(api_key=PINECONE_API_KEY)
+            logger.info("Pinecone client initialized successfully")
             
         except Exception as e:
             logger.warning(f"Failed to initialize Pinecone client: {e}")
             self.pinecone_client = None
-            self.embedding_model = None
-            self.tfidf_vectorizer = None
 
     def _ensure_pinecone_indexes(self):
         """Ensure Pinecone indexes exist, create them if they don't."""
@@ -1702,24 +1681,32 @@ class GoogleDriveProcessor:
             return False
             
         try:
-            existing_indexes = self.pinecone_client.list_indexes()
+            existing_indexes = [index.name for index in self.pinecone_client.list_indexes()]
             
-            # Create dense index if it doesn't exist
+            # Create dense index with integrated embedding if it doesn't exist
             if TITLES_DENSE_INDEX not in existing_indexes:
-                logger.info(f"Creating dense index: {TITLES_DENSE_INDEX}")
-                self.pinecone_client.create_index(
+                logger.info(f"Creating dense index with integrated embedding: {TITLES_DENSE_INDEX}")
+                self.pinecone_client.create_index_for_model(
                     name=TITLES_DENSE_INDEX,
-                    dimension=EMBEDDING_DIMENSION,
-                    metric="cosine"
+                    cloud=PINECONE_ENVIRONMENT.split('-')[0],  # Extract cloud from environment
+                    region=PINECONE_ENVIRONMENT,
+                    embed={
+                        "model": "multilingual-e5-large",
+                        "field_map": {"text": "content"}
+                    }
                 )
             
-            # Create sparse index if it doesn't exist
+            # Create sparse index with integrated embedding if it doesn't exist
             if TITLES_SPARSE_INDEX not in existing_indexes:
-                logger.info(f"Creating sparse index: {TITLES_SPARSE_INDEX}")
-                self.pinecone_client.create_index(
+                logger.info(f"Creating sparse index with integrated embedding: {TITLES_SPARSE_INDEX}")
+                self.pinecone_client.create_index_for_model(
                     name=TITLES_SPARSE_INDEX,
-                    dimension=10000,  # TF-IDF max_features
-                    metric="cosine"
+                    cloud=PINECONE_ENVIRONMENT.split('-')[0],  # Extract cloud from environment
+                    region=PINECONE_ENVIRONMENT,
+                    embed={
+                        "model": "pinecone-sparse-english-v0",
+                        "field_map": {"text": "content"}
+                    }
                 )
             
             return True
@@ -1728,43 +1715,6 @@ class GoogleDriveProcessor:
             logger.error(f"Error ensuring Pinecone indexes: {e}")
             return False
 
-    def _create_dense_embedding(self, text: str) -> List[float]:
-        """Create dense embedding using sentence transformer."""
-        if not self.embedding_model:
-            return []
-            
-        try:
-            embedding = self.embedding_model.encode(text)
-            return embedding.tolist()
-        except Exception as e:
-            logger.error(f"Error creating dense embedding: {e}")
-            return []
-
-    def _create_sparse_embedding(self, texts: List[str], text: str) -> Dict[str, float]:
-        """Create sparse embedding using TF-IDF."""
-        if not self.tfidf_vectorizer:
-            return {}
-            
-        try:
-            # Fit vectorizer on all texts if not already fitted
-            if not hasattr(self.tfidf_vectorizer, 'vocabulary_'):
-                self.tfidf_vectorizer.fit(texts)
-            
-            # Transform the specific text
-            tfidf_matrix = self.tfidf_vectorizer.transform([text])
-            
-            # Convert to sparse dictionary format
-            sparse_dict = {}
-            coo = tfidf_matrix.tocoo()
-            for i, j, v in zip(coo.row, coo.col, coo.data):
-                if v > 0:  # Only include non-zero values
-                    sparse_dict[str(j)] = float(v)
-            
-            return sparse_dict
-            
-        except Exception as e:
-            logger.error(f"Error creating sparse embedding: {e}")
-            return {}
 
     def index_title_cards_in_pinecone(
         self,
@@ -1773,7 +1723,7 @@ class GoogleDriveProcessor:
         limit: Optional[int] = None,
         batch_size: int = 100
     ) -> bool:
-        """Index title cards in Pinecone for both dense and sparse search."""
+        """Index title cards in Pinecone using integrated embedding."""
         
         if not HAS_PINECONE_SUPPORT:
             logger.error("Pinecone support not available")
@@ -1812,31 +1762,9 @@ class GoogleDriveProcessor:
             dense_index = self.pinecone_client.Index(TITLES_DENSE_INDEX)
             sparse_index = self.pinecone_client.Index(TITLES_SPARSE_INDEX)
             
-            # Prepare all texts for TF-IDF fitting
-            all_texts = []
-            for _, row in df_title_cards.iterrows():
-                # Combine title, author, and summary for indexing
-                text_parts = []
-                if row.get('title'):
-                    text_parts.append(row['title'])
-                if row.get('author'):
-                    text_parts.append(row['author'])
-                if row.get('summary'):
-                    text_parts.append(row['summary'])
-                
-                combined_text = ' '.join(text_parts)
-                all_texts.append(combined_text)
-            
-            # Fit TF-IDF vectorizer on all texts
-            if self.tfidf_vectorizer and all_texts:
-                logger.info("Fitting TF-IDF vectorizer on all texts...")
-                self.tfidf_vectorizer.fit(all_texts)
-            
             # Process title cards in batches
             processed_count = 0
             error_count = 0
-            dense_vectors = []
-            sparse_vectors = []
             
             for i in range(0, len(df_title_cards), batch_size):
                 batch = df_title_cards.iloc[i:i + batch_size]
@@ -1872,12 +1800,6 @@ class GoogleDriveProcessor:
                             error_count += 1
                             continue
                         
-                        # Create dense embedding
-                        dense_embedding = self._create_dense_embedding(combined_text)
-                        
-                        # Create sparse embedding
-                        sparse_embedding = self._create_sparse_embedding(all_texts, combined_text)
-                        
                         # Prepare metadata
                         metadata = {
                             'file_hash': file_hash,
@@ -1898,20 +1820,20 @@ class GoogleDriveProcessor:
                             'classification_confidence': float(row.get('classification_confidence', 0.0))
                         }
                         
-                        # Add to batches
-                        if dense_embedding:
-                            batch_dense.append({
-                                'id': file_hash,
-                                'values': dense_embedding,
-                                'metadata': metadata
-                            })
+                        # Create records for both indexes using Pinecone's integrated embedding
+                        # Dense index record
+                        batch_dense.append({
+                            'id': file_hash,
+                            'content': combined_text,  # Raw text - Pinecone will embed it
+                            'metadata': metadata
+                        })
                         
-                        if sparse_embedding:
-                            batch_sparse.append({
-                                'id': file_hash,
-                                'values': sparse_embedding,
-                                'metadata': metadata
-                            })
+                        # Sparse index record  
+                        batch_sparse.append({
+                            'id': file_hash,
+                            'content': combined_text,  # Raw text - Pinecone will embed it
+                            'metadata': metadata
+                        })
                         
                         processed_count += 1
                         
@@ -1919,15 +1841,15 @@ class GoogleDriveProcessor:
                         error_count += 1
                         logger.error(f"Error processing title card {file_hash}: {e}")
                 
-                # Upsert batches to Pinecone
+                # Upsert batches to Pinecone with integrated embedding
                 try:
                     if batch_dense:
                         dense_index.upsert(vectors=batch_dense)
-                        logger.info(f"Upserted {len(batch_dense)} dense vectors to Pinecone")
+                        logger.info(f"Upserted {len(batch_dense)} records to dense index")
                     
                     if batch_sparse:
                         sparse_index.upsert(vectors=batch_sparse)
-                        logger.info(f"Upserted {len(batch_sparse)} sparse vectors to Pinecone")
+                        logger.info(f"Upserted {len(batch_sparse)} records to sparse index")
                         
                 except Exception as e:
                     logger.error(f"Error upserting batch to Pinecone: {e}")
