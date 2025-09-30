@@ -965,22 +965,68 @@ def test_summarize(
                     console.print(f"❌ Test API call failed: {test_error}", style="red")
                     console.print("🔍 The BookWyrm summarization API may not be working correctly", style="red")
                     
-                    # Try using the CLI approach - save to file and use file path
-                    console.print("\n🔄 Trying file-based approach...", style="yellow")
+                    # Try using a different approach - maybe the API expects different content format
+                    console.print("\n🔄 Trying with URL-based approach...", style="yellow")
                     
                     import tempfile
+                    import os
+                    
+                    # Save JSONL to a temporary file
                     with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
                         f.write(jsonl_content)
                         temp_file = f.name
                     
                     console.print(f"📁 Saved JSONL to temporary file: {temp_file}", style="dim")
                     
-                    # This would require a different API endpoint or approach
-                    console.print("⚠️  File-based summarization would require different API integration", style="yellow")
+                    try:
+                        # Try reading the file back and using it as content
+                        with open(temp_file, 'r') as f:
+                            file_content = f.read()
+                        
+                        console.print(f"📄 File content length: {len(file_content)} chars", style="dim")
+                        console.print(f"📄 First 100 chars: {file_content[:100]}...", style="dim")
+                        
+                        # Try with the file content as a string
+                        file_request = SummarizeRequest(
+                            content=file_content,
+                            max_tokens=5000,
+                            debug=False
+                        )
+                        
+                        console.print("📤 Sending file content request...", style="blue")
+                        file_response = processor.bookwyrm_client.summarize(file_request)
+                        
+                        console.print("✅ File-based API call successful!", style="green")
+                        console.print(f"📝 Summary: {file_response.summary[:200]}...", style="green")
+                        
+                    except Exception as file_error:
+                        console.print(f"❌ File-based approach also failed: {file_error}", style="red")
+                        
+                        # Try one more approach - maybe the API is completely broken
+                        console.print("\n🔄 Trying with minimal plain text...", style="yellow")
+                        
+                        try:
+                            minimal_request = SummarizeRequest(
+                                content="This is a simple test document that needs to be summarized.",
+                                max_tokens=1000,
+                                debug=False
+                            )
+                            
+                            console.print("📤 Sending minimal text request...", style="blue")
+                            minimal_response = processor.bookwyrm_client.summarize(minimal_request)
+                            
+                            console.print("✅ Minimal text API call successful!", style="green")
+                            console.print(f"📝 Summary: {minimal_response.summary}", style="green")
+                            console.print("🔍 The issue might be with JSONL format specifically", style="yellow")
+                            
+                        except Exception as minimal_error:
+                            console.print(f"❌ Even minimal text failed: {minimal_error}", style="red")
+                            console.print("🔍 The BookWyrm summarization API appears to be completely non-functional", style="red")
                     
-                    # Clean up
-                    import os
-                    os.unlink(temp_file)
+                    finally:
+                        # Clean up
+                        if os.path.exists(temp_file):
+                            os.unlink(temp_file)
                     
                     return
                 
