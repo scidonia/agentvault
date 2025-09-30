@@ -1686,12 +1686,15 @@ class GoogleDriveProcessor:
             # Create dense index with integrated embedding if it doesn't exist
             if TITLES_DENSE_INDEX not in existing_indexes:
                 logger.info(f"Creating dense index with integrated embedding: {TITLES_DENSE_INDEX}")
-                # Extract cloud from environment (e.g., "europe-west4-gcp" -> "gcp")
-                cloud = PINECONE_ENVIRONMENT.split('-')[-1]  # Get last part after splitting by '-'
+                # Parse environment string (e.g., "europe-west4-gcp" -> cloud="gcp", region="europe-west4")
+                parts = PINECONE_ENVIRONMENT.split('-')
+                cloud = parts[-1]  # Last part is cloud provider
+                region = '-'.join(parts[:-1])  # Everything except last part is region
+                
                 self.pinecone_client.create_index_for_model(
                     name=TITLES_DENSE_INDEX,
                     cloud=cloud,
-                    region=PINECONE_ENVIRONMENT,
+                    region=region,
                     embed={
                         "model": "multilingual-e5-large",
                         "field_map": {"text": "content"}
@@ -1701,12 +1704,15 @@ class GoogleDriveProcessor:
             # Create sparse index with integrated embedding if it doesn't exist
             if TITLES_SPARSE_INDEX not in existing_indexes:
                 logger.info(f"Creating sparse index with integrated embedding: {TITLES_SPARSE_INDEX}")
-                # Extract cloud from environment (e.g., "europe-west4-gcp" -> "gcp")
-                cloud = PINECONE_ENVIRONMENT.split('-')[-1]  # Get last part after splitting by '-'
+                # Parse environment string (e.g., "europe-west4-gcp" -> cloud="gcp", region="europe-west4")
+                parts = PINECONE_ENVIRONMENT.split('-')
+                cloud = parts[-1]  # Last part is cloud provider
+                region = '-'.join(parts[:-1])  # Everything except last part is region
+                
                 self.pinecone_client.create_index_for_model(
                     name=TITLES_SPARSE_INDEX,
                     cloud=cloud,
-                    region=PINECONE_ENVIRONMENT,
+                    region=region,
                     embed={
                         "model": "pinecone-sparse-english-v0",
                         "field_map": {"text": "content"}
