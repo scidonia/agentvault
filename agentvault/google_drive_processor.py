@@ -1693,7 +1693,7 @@ class GoogleDriveProcessor:
                     region="us-east-1",
                     embed={
                         "model": "llama-text-embed-v2",
-                        "field_map": {"text": "chunk_text"}
+                        "field_map": {"text": "text"}
                     }
                 )
             
@@ -1707,7 +1707,7 @@ class GoogleDriveProcessor:
                     region="us-east-1",
                     embed={
                         "model": "pinecone-sparse-english-v0",
-                        "field_map": {"text": "chunk_text"}
+                        "field_map": {"text": "text"}
                     }
                 )
             
@@ -1826,14 +1826,14 @@ class GoogleDriveProcessor:
                         # Dense index record - use field name from field_map
                         batch_dense.append({
                             'id': file_hash,
-                            'chunk_text': combined_text,
+                            'text': combined_text,
                             'metadata': metadata
                         })
                         
                         # Sparse index record - use field name from field_map
                         batch_sparse.append({
                             'id': file_hash,
-                            'chunk_text': combined_text,
+                            'text': combined_text,
                             'metadata': metadata
                         })
                         
