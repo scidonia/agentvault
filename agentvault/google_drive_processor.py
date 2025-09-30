@@ -1008,7 +1008,7 @@ class GoogleDriveProcessor:
                 jsonl_lines = []
                 for _, phrase_row in sorted_phrases.iterrows():
                     jsonl_line = {
-                        "phrase": phrase_row['phrase'],
+                        "text": phrase_row['phrase'],
                         "start_char": phrase_row.get('start_char'),
                         "end_char": phrase_row.get('end_char')
                     }
