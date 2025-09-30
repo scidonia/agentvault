@@ -929,14 +929,60 @@ def test_summarize(
             try:
                 from bookwyrm.models import SummarizeRequest
                 
-                request = SummarizeRequest(
-                    content=jsonl_content,
-                    max_tokens=5000,  # Smaller for testing
-                    debug=True  # Enable debug mode
+                # First, let's try with a very simple test case
+                console.print("🧪 Testing with minimal JSONL content...", style="blue")
+                
+                # Create a simple test JSONL with just one line
+                test_jsonl = '{"text": "This is a test document for summarization.", "start_char": 0, "end_char": 42}'
+                
+                test_request = SummarizeRequest(
+                    content=test_jsonl,
+                    max_tokens=1000,
+                    debug=False
                 )
                 
-                console.print("📤 Sending request to BookWyrm API...", style="blue")
-                response = processor.bookwyrm_client.summarize(request)
+                console.print(f"📄 Test JSONL: {test_jsonl}", style="dim")
+                console.print("📤 Sending test request to BookWyrm API...", style="blue")
+                
+                try:
+                    test_response = processor.bookwyrm_client.summarize(test_request)
+                    console.print("✅ Test API call successful!", style="green")
+                    console.print(f"📝 Test summary: {test_response.summary}", style="green")
+                    
+                    # Now try with the actual content
+                    console.print("\n🔄 Now trying with actual file content...", style="blue")
+                    
+                    request = SummarizeRequest(
+                        content=jsonl_content,
+                        max_tokens=5000,
+                        debug=True
+                    )
+                    
+                    console.print("📤 Sending actual request to BookWyrm API...", style="blue")
+                    response = processor.bookwyrm_client.summarize(request)
+                    
+                except Exception as test_error:
+                    console.print(f"❌ Test API call failed: {test_error}", style="red")
+                    console.print("🔍 The BookWyrm summarization API may not be working correctly", style="red")
+                    
+                    # Try using the CLI approach - save to file and use file path
+                    console.print("\n🔄 Trying file-based approach...", style="yellow")
+                    
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
+                        f.write(jsonl_content)
+                        temp_file = f.name
+                    
+                    console.print(f"📁 Saved JSONL to temporary file: {temp_file}", style="dim")
+                    
+                    # This would require a different API endpoint or approach
+                    console.print("⚠️  File-based summarization would require different API integration", style="yellow")
+                    
+                    # Clean up
+                    import os
+                    os.unlink(temp_file)
+                    
+                    return
                 
                 console.print("✅ API call successful!", style="green")
                 console.print(f"📝 Summary length: {len(response.summary)} chars", style="green")
