@@ -1166,3 +1166,240 @@ class GoogleDriveProcessor:
         except Exception as e:
             logger.error(f"Error processing summaries: {e}")
             return False
+
+    def process_summaries_via_endpoint(
+        self,
+        phrases_file: str = "content_phrases.parquet",
+        output_file: str = "content_summaries.parquet",
+        progress_callback=None,
+        limit: Optional[int] = None,
+        max_tokens: int = 10000,
+        endpoint_url: str = "http://localhost:8000",
+        api_token: str = None
+    ) -> bool:
+        """Create summaries from phrasal content using the summarize-endpoint service."""
+        
+        if not api_token:
+            logger.error("API token required for summarize endpoint")
+            return False
+            
+        phrases_path = DATA_DIR / phrases_file
+        if not phrases_path.exists():
+            logger.error(f"Phrases file not found: {phrases_path}")
+            return False
+            
+        try:
+            import httpx
+            import json
+            
+            # Load phrases
+            df_phrases = pd.read_parquet(phrases_path)
+            
+            if df_phrases.empty:
+                logger.warning("No phrases found for summarization")
+                return False
+            
+            # Group phrases by file_hash to create phrases array per file
+            files_to_summarize = []
+            
+            for file_hash, group in df_phrases.groupby('file_hash'):
+                # Sort phrases by phrase_count to maintain order
+                sorted_phrases = group.sort_values('phrase_count')
+                
+                # Create phrases array from phrases
+                phrases_array = []
+                for _, phrase_row in sorted_phrases.iterrows():
+                    phrase_obj = {
+                        "text": phrase_row['phrase'],
+                        "start_char": phrase_row.get('start_char'),
+                        "end_char": phrase_row.get('end_char')
+                    }
+                    phrases_array.append(phrase_obj)
+                
+                # Get metadata from first phrase record
+                first_record = sorted_phrases.iloc[0]
+                
+                files_to_summarize.append({
+                    'file_hash': file_hash,
+                    'file_name': first_record['file_name'],
+                    'phrases': phrases_array,
+                    'content_source': first_record['content_source'],
+                    'mime_type': first_record['mime_type'],
+                    'category': first_record['category'],
+                    'language': first_record['language'],
+                    'phrase_count': len(sorted_phrases)
+                })
+            
+            logger.info(f"Found {len(files_to_summarize)} files with phrases to summarize")
+            
+            # Apply limit if specified
+            if limit:
+                files_to_summarize = files_to_summarize[:limit]
+                logger.info(f"Processing limited to {len(files_to_summarize)} files")
+            
+            # Check for existing summaries
+            output_path = DATA_DIR / output_file
+            existing_hashes = set()
+            existing_data = []
+            
+            if output_path.exists():
+                try:
+                    existing_df = pd.read_parquet(output_path)
+                    existing_hashes = set(existing_df['file_hash'])
+                    existing_data = existing_df.to_dict('records')
+                    logger.info(f"Found {len(existing_data)} existing summaries")
+                except Exception as e:
+                    logger.warning(f"Could not load existing summaries: {e}")
+            
+            # Process each file for summarization
+            summaries = []
+            processed_count = 0
+            skipped_count = 0
+            error_count = 0
+            
+            headers = {
+                "Authorization": f"Bearer {api_token}",
+                "Content-Type": "application/json"
+            }
+            
+            for file_info in files_to_summarize:
+                file_hash = file_info['file_hash']
+                file_name = file_info['file_name']
+                phrases = file_info['phrases']
+                
+                # Skip if already processed
+                if file_hash in existing_hashes:
+                    skipped_count += 1
+                    continue
+                
+                # Update progress
+                if progress_callback:
+                    progress_callback({
+                        'current_file': file_name,
+                        'processed': processed_count,
+                        'total': len(files_to_summarize),
+                        'skipped': skipped_count,
+                        'errors': error_count
+                    })
+                
+                try:
+                    # Validate phrases array
+                    if not phrases or len(phrases) == 0:
+                        logger.warning(f"Skipping {file_name}: No phrases found")
+                        error_count += 1
+                        continue
+                    
+                    # Clean up phrases - ensure all required fields are present
+                    clean_phrases = []
+                    for phrase in phrases:
+                        if phrase.get('text') and len(phrase['text'].strip()) > 0:
+                            clean_phrase = {
+                                "text": phrase['text'],
+                                "start_char": phrase.get('start_char') if phrase.get('start_char') is not None else 0,
+                                "end_char": phrase.get('end_char') if phrase.get('end_char') is not None else len(phrase['text'])
+                            }
+                            clean_phrases.append(clean_phrase)
+                    
+                    if not clean_phrases:
+                        logger.warning(f"Skipping {file_name}: No valid phrases found")
+                        error_count += 1
+                        continue
+                    
+                    logger.info(f"Sending {len(clean_phrases)} phrases for summarization of {file_name}")
+                    
+                    # Prepare request payload
+                    request_data = {
+                        "phrases": clean_phrases,
+                        "max_tokens": max_tokens,
+                        "debug": False
+                    }
+                    
+                    # Make HTTP request to summarize endpoint
+                    with httpx.Client(timeout=300.0) as client:
+                        response = client.post(
+                            f"{endpoint_url}/summarize",
+                            json=request_data,
+                            headers=headers
+                        )
+                    
+                    if response.status_code == 200:
+                        # Parse streaming response
+                        lines = response.text.strip().split('\n')
+                        final_summary = None
+                        
+                        for line in lines:
+                            if line.startswith('data: '):
+                                try:
+                                    data = json.loads(line[6:])  # Remove 'data: ' prefix
+                                    if data.get('type') == 'summary':
+                                        final_summary = data
+                                        break
+                                except json.JSONDecodeError:
+                                    continue
+                        
+                        if final_summary:
+                            # Calculate original length from phrases
+                            original_length = sum(len(p['text']) for p in clean_phrases)
+                            
+                            summaries.append({
+                                'file_hash': file_hash,
+                                'file_name': file_name,
+                                'summary': final_summary['summary'],
+                                'content_source': file_info['content_source'],
+                                'original_length': original_length,
+                                'summary_length': len(final_summary['summary']),
+                                'phrase_count': file_info['phrase_count'],
+                                'subsummary_count': final_summary['subsummary_count'],
+                                'levels_used': final_summary['levels_used'],
+                                'total_tokens': final_summary['total_tokens'],
+                                'mime_type': file_info['mime_type'],
+                                'category': file_info['category'],
+                                'language': file_info['language'],
+                                'summarization_timestamp': pd.Timestamp.now().isoformat()
+                            })
+                            
+                            processed_count += 1
+                            logger.info(f"Created summary for {file_name} ({len(final_summary['summary'])} chars from {file_info['phrase_count']} phrases)")
+                        else:
+                            error_count += 1
+                            logger.error(f"No final summary received for {file_name}")
+                    else:
+                        error_count += 1
+                        logger.error(f"HTTP {response.status_code} error for {file_name}: {response.text[:200]}")
+                        
+                except httpx.TimeoutException:
+                    error_count += 1
+                    logger.error(f"Timeout error for {file_name}")
+                except httpx.ConnectError:
+                    error_count += 1
+                    logger.error(f"Connection error for {file_name} - is the endpoint running?")
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"Failed to create summary for {file_name}: {e}")
+            
+            # Final progress update
+            if progress_callback:
+                progress_callback({
+                    'current_file': 'Saving summaries...',
+                    'processed': processed_count,
+                    'total': len(files_to_summarize),
+                    'skipped': skipped_count,
+                    'errors': error_count,
+                    'phase': 'saving'
+                })
+            
+            # Combine with existing data and save
+            all_summaries = existing_data + summaries
+            
+            if all_summaries:
+                df_summaries = pd.DataFrame(all_summaries)
+                df_summaries.to_parquet(output_path, index=False)
+                logger.info(f"Saved {len(all_summaries)} total summaries to {output_path}")
+                return True
+            else:
+                logger.warning("No summaries to save")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error processing summaries via endpoint: {e}")
+            return False

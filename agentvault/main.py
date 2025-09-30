@@ -1,6 +1,7 @@
 """Main CLI interface for the BookWyrm RAG Agent."""
 
 import sys
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -868,8 +869,11 @@ def test_summarize(
     file_limit: int = typer.Option(
         1, "--files", help="Number of files to test (default: 1)"
     ),
+    summarize_endpoint: str = typer.Option(
+        "http://localhost:8000", "--endpoint", help="Summarize endpoint URL"
+    ),
 ):
-    """Test summarization with a single file to debug API issues."""
+    """Test summarization using the summarize-endpoint service."""
     
     phrases_path = DATA_DIR / phrases_file
     
@@ -877,25 +881,22 @@ def test_summarize(
         console.print(f"❌ Phrases file {phrases_file} not found at {phrases_path}", style="red")
         raise typer.Exit(1)
     
-    # Check prerequisites
-    processor = GoogleDriveProcessor()
-    
-    if not processor.bookwyrm_client:
-        console.print("❌ BookWyrm API key not found", style="red")
-        raise typer.Exit(1)
-    
-    from .google_drive_processor import HAS_PDF_SUPPORT
-    
-    if not HAS_PDF_SUPPORT:
-        console.print("❌ Summarization not supported in current BookWyrm client", style="red")
+    # Check for API token
+    api_token = os.getenv("BOOKWYRM_API_KEY")
+    if not api_token:
+        console.print("❌ BOOKWYRM_API_KEY environment variable not found", style="red")
+        console.print("💡 Set your API token: export BOOKWYRM_API_KEY='your-token-here'", style="yellow")
         raise typer.Exit(1)
     
     try:
         import pandas as pd
         import json
+        import httpx
+        
         df_phrases = pd.read_parquet(phrases_path)
         
         console.print(f"📊 Testing with {file_limit} file(s)", style="blue")
+        console.print(f"🌐 Using endpoint: {summarize_endpoint}", style="dim")
         
         # Get first file for testing
         file_hashes = df_phrases['file_hash'].unique()[:file_limit]
@@ -921,174 +922,86 @@ def test_summarize(
             console.print(f"📏 Phrases array: {len(phrases_array)} phrases", style="dim")
             console.print(f"📄 First phrase: {phrases_array[0]['text'][:100]}...", style="dim")
             
-            # Test the API call
-            console.print("🚀 Making API call...", style="yellow")
+            # Test the summarize endpoint
+            console.print("🚀 Making API call to summarize endpoint...", style="yellow")
             
             try:
-                from bookwyrm.models import SummarizeRequest
+                # Prepare request payload
+                request_data = {
+                    "phrases": phrases_array,
+                    "max_tokens": 5000,
+                    "debug": True
+                }
                 
-                # First, let's try with a very simple test case
-                console.print("🧪 Testing with minimal phrases array...", style="blue")
+                headers = {
+                    "Authorization": f"Bearer {api_token}",
+                    "Content-Type": "application/json"
+                }
                 
-                # Create a simple test phrases array
-                test_phrases = [
-                    {
-                        "text": "This is a test document for summarization.",
-                        "start_char": 0,
-                        "end_char": 42
-                    }
-                ]
+                console.print("📤 Sending request to summarize endpoint...", style="blue")
                 
-                test_request = SummarizeRequest(
-                    phrases=test_phrases,
-                    max_tokens=1000,
-                    debug=False
-                )
-                
-                console.print(f"📄 Test phrases: {test_phrases}", style="dim")
-                console.print("📤 Sending test request to BookWyrm API...", style="blue")
-                
-                try:
-                    test_response = processor.bookwyrm_client.summarize(test_request)
-                    console.print("✅ Test API call successful!", style="green")
-                    console.print(f"📝 Test summary: {test_response.summary}", style="green")
-                    
-                    # Now try with the actual content
-                    console.print("\n🔄 Now trying with actual file phrases...", style="blue")
-                    
-                    request = SummarizeRequest(
-                        phrases=phrases_array,
-                        max_tokens=5000,
-                        debug=True
+                # Make the HTTP request
+                with httpx.Client(timeout=300.0) as client:
+                    response = client.post(
+                        f"{summarize_endpoint}/summarize",
+                        json=request_data,
+                        headers=headers
                     )
-                    
-                    console.print("📤 Sending actual request to BookWyrm API...", style="blue")
-                    response = processor.bookwyrm_client.summarize(request)
-                    
-                except Exception as test_error:
-                    console.print(f"❌ Test API call failed: {test_error}", style="red")
-                    console.print("🔍 The BookWyrm summarization API may not be working correctly", style="red")
-                    
-                    # Try using a different approach - maybe the API expects different content format
-                    console.print("\n🔄 Trying with URL-based approach...", style="yellow")
-                    
-                    import tempfile
-                    import os
-                    
-                    # Create JSONL content from phrases array
-                    jsonl_lines = []
-                    for phrase in phrases_array:
-                        jsonl_lines.append(json.dumps(phrase))
-                    jsonl_content = '\n'.join(jsonl_lines)
-                    
-                    # Save JSONL to a temporary file
-                    with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
-                        f.write(jsonl_content)
-                        temp_file = f.name
-                    
-                    console.print(f"📁 Saved JSONL to temporary file: {temp_file}", style="dim")
-                    
-                    try:
-                        # Try reading the file back and using it as content
-                        with open(temp_file, 'r') as f:
-                            file_content = f.read()
-                        
-                        console.print(f"📄 File content length: {len(file_content)} chars", style="dim")
-                        console.print(f"📄 First 100 chars: {file_content[:100]}...", style="dim")
-                        
-                        # Try with the file content as a string
-                        file_request = SummarizeRequest(
-                            content=file_content,
-                            max_tokens=5000,
-                            debug=False
-                        )
-                        
-                        console.print("📤 Sending file content request...", style="blue")
-                        file_response = processor.bookwyrm_client.summarize(file_request)
-                        
-                        console.print("✅ File-based API call successful!", style="green")
-                        console.print(f"📝 Summary: {file_response.summary[:200]}...", style="green")
-                        
-                    except Exception as file_error:
-                        console.print(f"❌ File-based approach also failed: {file_error}", style="red")
-                        
-                        # Try one more approach - maybe the API is completely broken
-                        console.print("\n🔄 Trying with minimal plain text...", style="yellow")
-                        
-                        try:
-                            minimal_request = SummarizeRequest(
-                                content="This is a simple test document that needs to be summarized.",
-                                max_tokens=1000,
-                                debug=False
-                            )
-                            
-                            console.print("📤 Sending minimal text request...", style="blue")
-                            minimal_response = processor.bookwyrm_client.summarize(minimal_request)
-                            
-                            console.print("✅ Minimal text API call successful!", style="green")
-                            console.print(f"📝 Summary: {minimal_response.summary}", style="green")
-                            console.print("🔍 The issue might be with JSONL format specifically", style="yellow")
-                            
-                        except Exception as minimal_error:
-                            console.print(f"❌ Even minimal text failed: {minimal_error}", style="red")
-                            console.print("🔍 The BookWyrm summarization API appears to be completely non-functional", style="red")
-                    
-                    finally:
-                        # Clean up
-                        if os.path.exists(temp_file):
-                            os.unlink(temp_file)
-                    
-                    return
                 
-                console.print("✅ API call successful!", style="green")
-                console.print(f"📝 Summary length: {len(response.summary)} chars", style="green")
-                console.print(f"🔢 Tokens used: {response.total_tokens}", style="green")
-                console.print(f"📊 Levels used: {response.levels_used}", style="green")
+                if response.status_code == 200:
+                    console.print("✅ API call successful!", style="green")
+                    
+                    # Parse streaming response
+                    lines = response.text.strip().split('\n')
+                    final_summary = None
+                    progress_updates = []
+                    
+                    for line in lines:
+                        if line.startswith('data: '):
+                            try:
+                                data = json.loads(line[6:])  # Remove 'data: ' prefix
+                                if data.get('type') == 'progress':
+                                    progress_updates.append(data)
+                                    console.print(f"📊 Progress: {data.get('message', 'Processing...')}", style="dim")
+                                elif data.get('type') == 'summary':
+                                    final_summary = data
+                            except json.JSONDecodeError:
+                                continue
+                    
+                    if final_summary:
+                        console.print(f"📝 Summary length: {len(final_summary['summary'])} chars", style="green")
+                        console.print(f"🔢 Tokens used: {final_summary['total_tokens']}", style="green")
+                        console.print(f"📊 Levels used: {final_summary['levels_used']}", style="green")
+                        console.print(f"📋 Subsummaries: {final_summary['subsummary_count']}", style="green")
+                        
+                        console.print("\n📄 Summary:", style="bold")
+                        console.print(Panel(final_summary['summary'], border_style="green"))
+                        
+                        if final_summary.get('intermediate_summaries'):
+                            console.print(f"\n🔍 Intermediate summaries: {len(final_summary['intermediate_summaries'])} levels", style="dim")
+                    else:
+                        console.print("⚠️ No final summary received", style="yellow")
+                        
+                else:
+                    console.print(f"❌ API call failed with status {response.status_code}", style="red")
+                    console.print(f"📄 Response: {response.text[:500]}...", style="red")
+                    
+                    if response.status_code == 401:
+                        console.print("🔑 Check your API token", style="yellow")
+                    elif response.status_code == 402:
+                        console.print("💳 Insufficient balance", style="yellow")
+                    elif response.status_code == 500:
+                        console.print("🔧 Server error - the summarize endpoint may be down", style="yellow")
                 
-                console.print("\n📄 Summary:", style="bold")
-                console.print(Panel(response.summary, border_style="green"))
-                
-                if response.intermediate_summaries:
-                    console.print(f"\n🔍 Intermediate summaries: {len(response.intermediate_summaries)} levels", style="dim")
-                
+            except httpx.TimeoutException:
+                console.print("⏰ Request timed out", style="red")
+            except httpx.ConnectError:
+                console.print(f"🔌 Could not connect to {summarize_endpoint}", style="red")
+                console.print("💡 Make sure the summarize endpoint is running:", style="yellow")
+                console.print("   cd ../summarize-endpoint && summarize", style="yellow")
             except Exception as e:
                 console.print(f"❌ API call failed: {e}", style="red")
                 console.print(f"🔍 Error type: {type(e).__name__}", style="red")
-                
-                # Try to get more details
-                if hasattr(e, 'response'):
-                    console.print(f"📡 Response status: {e.response.status_code if e.response else 'None'}", style="red")
-                    if e.response and hasattr(e.response, 'text'):
-                        console.print(f"📄 Response text: {e.response.text[:500]}...", style="red")
-                
-                # Try a simpler request
-                console.print("\n🔄 Trying with single phrase...", style="yellow")
-                try:
-                    # Create a single phrase from all text
-                    all_text = ' '.join([phrase['text'] for phrase in phrases_array])
-                    
-                    simple_phrases = [
-                        {
-                            "text": all_text,
-                            "start_char": 0,
-                            "end_char": len(all_text)
-                        }
-                    ]
-                    
-                    simple_request = SummarizeRequest(
-                        phrases=simple_phrases,
-                        max_tokens=5000,
-                        debug=False
-                    )
-                    
-                    console.print("📤 Sending single phrase request...", style="blue")
-                    response = processor.bookwyrm_client.summarize(simple_request)
-                    
-                    console.print("✅ Single phrase API call successful!", style="green")
-                    console.print(f"📝 Summary: {response.summary[:200]}...", style="green")
-                    
-                except Exception as e2:
-                    console.print(f"❌ Single phrase also failed: {e2}", style="red")
                 
     except Exception as e:
         console.print(f"❌ Test failed: {e}", style="red")
@@ -1115,8 +1028,11 @@ def create_summaries(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed progress information"
     ),
+    summarize_endpoint: str = typer.Option(
+        "http://localhost:8000", "--endpoint", help="Summarize endpoint URL"
+    ),
 ):
-    """Create summaries from phrasal content using BookWyrm summarization API."""
+    """Create summaries from phrasal content using the summarize-endpoint service."""
     
     phrases_path = DATA_DIR / phrases_file
     output_path = DATA_DIR / output_file
@@ -1141,11 +1057,10 @@ def create_summaries(
             console.print("❌ Processing cancelled", style="yellow")
             raise typer.Exit()
     
-    # Check prerequisites before starting
-    processor = GoogleDriveProcessor()
-    
-    if not processor.bookwyrm_client:
-        console.print("❌ BookWyrm API key not found", style="red")
+    # Check for API token
+    api_token = os.getenv("BOOKWYRM_API_KEY")
+    if not api_token:
+        console.print("❌ BOOKWYRM_API_KEY environment variable not found", style="red")
         console.print("\n📋 [bold]Setup Instructions:[/bold]", style="yellow")
         console.print("1. Get an API key from https://api.bookwyrm.ai", style="yellow")
         console.print("2. Set environment variable:", style="yellow")
@@ -1153,19 +1068,8 @@ def create_summaries(
         console.print("3. Run the command again", style="yellow")
         raise typer.Exit(1)
     
-    # Import the HAS_PDF_SUPPORT flag
-    from .google_drive_processor import HAS_PDF_SUPPORT
-    
-    if not HAS_PDF_SUPPORT:
-        console.print("❌ Summarization not supported in current BookWyrm client", style="red")
-        console.print("\n📋 [bold]Upgrade Instructions:[/bold]", style="yellow")
-        console.print("1. Upgrade BookWyrm client:", style="yellow")
-        console.print("   [cyan]pip install --upgrade bookwyrm-client[/cyan]", style="yellow")
-        console.print("2. Or install from source if needed", style="yellow")
-        console.print("3. Run the command again", style="yellow")
-        raise typer.Exit(1)
-    
     console.print(Panel.fit("📝 Starting Content Summarization", style="bold blue"))
+    console.print(f"🌐 Using endpoint: {summarize_endpoint}", style="dim")
     
     with Progress(
         SpinnerColumn(),
@@ -1210,12 +1114,17 @@ def create_summaries(
                 if verbose and current_file and phase != 'saving':
                     console.print(f"  📝 {current_file}", style="dim")
             
-            success = processor.process_summaries_from_phrases(
+            # Create processor instance
+            processor = GoogleDriveProcessor()
+            
+            success = processor.process_summaries_via_endpoint(
                 phrases_file=phrases_file,
                 output_file=output_file,
                 progress_callback=update_progress,
                 limit=limit,
-                max_tokens=max_tokens
+                max_tokens=max_tokens,
+                endpoint_url=summarize_endpoint,
+                api_token=api_token
             )
             
             if not success:
