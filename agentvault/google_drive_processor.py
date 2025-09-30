@@ -1084,11 +1084,42 @@ class GoogleDriveProcessor:
                         error_count += 1
                         continue
                     
+                    # Debug: Log first few lines of JSONL content
                     logger.info(f"Sending JSONL content ({len(jsonl_content)} chars) for summarization of {file_name}")
+                    lines = jsonl_content.split('\n')
+                    logger.debug(f"First JSONL line: {lines[0][:200]}...")
+                    logger.debug(f"Total JSONL lines: {len(lines)}")
                     
-                    # Create summarization request with JSONL content (like BookWyrm CLI)
+                    # Validate JSONL format
+                    valid_lines = []
+                    for i, line in enumerate(lines):
+                        if line.strip():
+                            try:
+                                data = json.loads(line)
+                                # Ensure required fields exist and are valid
+                                if 'text' in data and data['text'] and len(data['text'].strip()) > 0:
+                                    # Clean up None values
+                                    clean_data = {
+                                        "text": data['text'],
+                                        "start_char": data.get('start_char') if data.get('start_char') is not None else 0,
+                                        "end_char": data.get('end_char') if data.get('end_char') is not None else len(data['text'])
+                                    }
+                                    valid_lines.append(json.dumps(clean_data))
+                            except (json.JSONDecodeError, KeyError) as e:
+                                logger.warning(f"Skipping invalid JSONL line {i} in {file_name}: {e}")
+                                continue
+                    
+                    if not valid_lines:
+                        logger.warning(f"Skipping {file_name}: No valid JSONL lines found")
+                        error_count += 1
+                        continue
+                    
+                    clean_jsonl_content = '\n'.join(valid_lines)
+                    logger.info(f"Using {len(valid_lines)} valid lines out of {len(lines)} total lines")
+                    
+                    # Create summarization request with cleaned JSONL content
                     request = SummarizeRequest(
-                        content=jsonl_content,
+                        content=clean_jsonl_content,
                         max_tokens=max_tokens,
                         debug=False
                     )
@@ -1101,7 +1132,7 @@ class GoogleDriveProcessor:
                         'file_name': file_name,
                         'summary': response.summary,
                         'content_source': file_info['content_source'],
-                        'original_length': len(jsonl_content),
+                        'original_length': len(clean_jsonl_content),
                         'summary_length': len(response.summary),
                         'phrase_count': file_info['phrase_count'],
                         'subsummary_count': response.subsummary_count,
