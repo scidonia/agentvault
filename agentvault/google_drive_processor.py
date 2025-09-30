@@ -1831,17 +1831,21 @@ class GoogleDriveProcessor:
                         }
                         
                         # Create records for both indexes using Pinecone's integrated embedding
-                        # Dense index record
+                        # Dense index record - use field name from field_map
                         batch_dense.append({
                             'id': file_hash,
-                            'content': combined_text,  # Raw text - Pinecone will embed it
+                            'values': {
+                                'content': combined_text  # Field name matches field_map
+                            },
                             'metadata': metadata
                         })
                         
-                        # Sparse index record  
+                        # Sparse index record - use field name from field_map
                         batch_sparse.append({
                             'id': file_hash,
-                            'content': combined_text,  # Raw text - Pinecone will embed it
+                            'values': {
+                                'content': combined_text  # Field name matches field_map
+                            },
                             'metadata': metadata
                         })
                         
