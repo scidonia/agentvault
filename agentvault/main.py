@@ -804,6 +804,7 @@ def debug_phrases(
     
     try:
         import pandas as pd
+        import json
         df_phrases = pd.read_parquet(phrases_path)
         
         console.print(f"📊 Loaded {len(df_phrases)} phrase records", style="blue")
