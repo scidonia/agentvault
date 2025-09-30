@@ -1822,20 +1822,54 @@ class GoogleDriveProcessor:
                             'classification_confidence': float(row.get('classification_confidence', 0.0))
                         }
                         
-                        # Create records for both indexes using Pinecone's integrated embedding
-                        # Dense index record - use field name from field_map
-                        batch_dense.append({
-                            'id': file_hash,
+                        # Create records for both indexes using Pinecone's integrated embedding (api-rag style)
+                        # Dense index record - flat structure like api-rag
+                        dense_record = {
+                            '_id': file_hash,
                             'text': combined_text,
-                            'metadata': metadata
-                        })
+                            'file_hash': file_hash,
+                            'title': row.get('title', ''),
+                            'author': row.get('author', ''),
+                            'file_name': row.get('file_name', ''),
+                            'category': row.get('category', ''),
+                            'subcategory': row.get('subcategory', ''),
+                            'language': row.get('language', ''),
+                            'mime_type': row.get('mime_type', ''),
+                            'content_source': row.get('content_source', ''),
+                            'summary_length': int(row.get('summary_length', 0)),
+                            'phrase_count': int(row.get('phrase_count', 0)),
+                            'file_size': int(row.get('file_size', 0)),
+                            'path': row.get('path', ''),
+                            'web_view_link': row.get('web_view_link', ''),
+                            'title_extracted_from': row.get('title_extracted_from', ''),
+                            'classification_confidence': float(row.get('classification_confidence', 0.0)),
+                            'type': 'title_card'
+                        }
+                        batch_dense.append(dense_record)
                         
-                        # Sparse index record - use field name from field_map
-                        batch_sparse.append({
-                            'id': file_hash,
+                        # Sparse index record - flat structure like api-rag
+                        sparse_record = {
+                            '_id': file_hash,
                             'text': combined_text,
-                            'metadata': metadata
-                        })
+                            'file_hash': file_hash,
+                            'title': row.get('title', ''),
+                            'author': row.get('author', ''),
+                            'file_name': row.get('file_name', ''),
+                            'category': row.get('category', ''),
+                            'subcategory': row.get('subcategory', ''),
+                            'language': row.get('language', ''),
+                            'mime_type': row.get('mime_type', ''),
+                            'content_source': row.get('content_source', ''),
+                            'summary_length': int(row.get('summary_length', 0)),
+                            'phrase_count': int(row.get('phrase_count', 0)),
+                            'file_size': int(row.get('file_size', 0)),
+                            'path': row.get('path', ''),
+                            'web_view_link': row.get('web_view_link', ''),
+                            'title_extracted_from': row.get('title_extracted_from', ''),
+                            'classification_confidence': float(row.get('classification_confidence', 0.0)),
+                            'type': 'title_card'
+                        }
+                        batch_sparse.append(sparse_record)
                         
                         processed_count += 1
                         
