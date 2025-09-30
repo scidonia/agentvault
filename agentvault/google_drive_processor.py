@@ -31,7 +31,7 @@ try:
     
     # Try to import PDF and phrasal processing models
     try:
-        from bookwyrm.models import PDFExtractRequest, ProcessTextRequest, ResponseFormat
+        from bookwyrm.models import PDFExtractRequest, ProcessTextRequest, ResponseFormat, SummarizeRequest
         HAS_PDF_SUPPORT = True
     except ImportError:
         print("⚠️  PDF extraction and phrasal processing not available in this BookWyrm client version")
@@ -39,6 +39,7 @@ try:
         PDFExtractRequest = None
         ProcessTextRequest = None
         ResponseFormat = None
+        SummarizeRequest = None
         
 except ImportError as e:
     print(f"❌ Missing BookWyrm client: {e}")
@@ -912,4 +913,190 @@ class GoogleDriveProcessor:
                 
         except Exception as e:
             logger.error(f"Error processing phrases: {e}")
+            return False
+
+    def process_summaries_from_content(
+        self,
+        index_file: str = "google_drive_index.parquet",
+        pdf_extractions_file: str = "pdf_extractions.parquet",
+        output_file: str = "content_summaries.parquet",
+        progress_callback=None,
+        limit: Optional[int] = None,
+        max_tokens: int = 10000
+    ) -> bool:
+        """Create summaries from both raw text content and PDF extractions using BookWyrm API."""
+        
+        if not self.bookwyrm_client:
+            logger.error("BookWyrm client not available for summarization")
+            return False
+            
+        if not HAS_PDF_SUPPORT or not SummarizeRequest:
+            logger.error("Summarization not supported in this BookWyrm client version")
+            return False
+            
+        index_path = DATA_DIR / index_file
+        if not index_path.exists():
+            logger.error(f"Index file not found: {index_path}")
+            return False
+            
+        try:
+            # Load the main index
+            df_index = pd.read_parquet(index_path)
+            
+            # Load PDF extractions if available
+            pdf_extractions = {}
+            pdf_extractions_path = DATA_DIR / pdf_extractions_file
+            if pdf_extractions_path.exists():
+                try:
+                    df_pdf = pd.read_parquet(pdf_extractions_path)
+                    pdf_extractions = dict(zip(df_pdf['file_hash'], df_pdf['extracted_text']))
+                    logger.info(f"Loaded {len(pdf_extractions)} PDF extractions")
+                except Exception as e:
+                    logger.warning(f"Could not load PDF extractions: {e}")
+            
+            # Filter for files with content (either raw content or PDF extractions)
+            content_files = []
+            
+            for _, row in df_index.iterrows():
+                file_hash = row['file_hash']
+                file_name = row['name']
+                
+                # Skip folders
+                if row.get('is_folder', False):
+                    continue
+                
+                # Get content from either raw content preview or PDF extraction
+                content = None
+                content_source = None
+                
+                # Check for PDF extraction first (more complete)
+                if file_hash in pdf_extractions:
+                    content = pdf_extractions[file_hash]
+                    content_source = "pdf_extraction"
+                # Fall back to raw content preview
+                elif row.get('content_preview') and len(row['content_preview'].strip()) > 100:
+                    content = row['content_preview']
+                    content_source = "raw_content"
+                
+                if content:
+                    content_files.append({
+                        'file_hash': file_hash,
+                        'file_name': file_name,
+                        'content': content,
+                        'content_source': content_source,
+                        'mime_type': row.get('mime_type', ''),
+                        'category': row.get('category', ''),
+                        'language': row.get('language', 'unknown')
+                    })
+            
+            if not content_files:
+                logger.warning("No files with content found for summarization")
+                return False
+                
+            logger.info(f"Found {len(content_files)} files with content to summarize")
+            
+            # Apply limit if specified
+            if limit:
+                content_files = content_files[:limit]
+                logger.info(f"Processing limited to {len(content_files)} files")
+            
+            # Check for existing summaries
+            output_path = DATA_DIR / output_file
+            existing_hashes = set()
+            existing_data = []
+            
+            if output_path.exists():
+                try:
+                    existing_df = pd.read_parquet(output_path)
+                    existing_hashes = set(existing_df['file_hash'])
+                    existing_data = existing_df.to_dict('records')
+                    logger.info(f"Found {len(existing_data)} existing summaries")
+                except Exception as e:
+                    logger.warning(f"Could not load existing summaries: {e}")
+            
+            # Process each file for summarization
+            summaries = []
+            processed_count = 0
+            skipped_count = 0
+            error_count = 0
+            
+            for file_info in content_files:
+                file_hash = file_info['file_hash']
+                file_name = file_info['file_name']
+                content = file_info['content']
+                
+                # Skip if already processed
+                if file_hash in existing_hashes:
+                    skipped_count += 1
+                    continue
+                
+                # Update progress
+                if progress_callback:
+                    progress_callback({
+                        'current_file': file_name,
+                        'processed': processed_count,
+                        'total': len(content_files),
+                        'skipped': skipped_count,
+                        'errors': error_count
+                    })
+                
+                try:
+                    # Create summarization request
+                    request = SummarizeRequest(
+                        content=content,
+                        max_tokens=max_tokens,
+                        debug=False
+                    )
+                    
+                    # Make API call for summarization
+                    response = self.bookwyrm_client.summarize(request)
+                    
+                    summaries.append({
+                        'file_hash': file_hash,
+                        'file_name': file_name,
+                        'summary': response.summary,
+                        'content_source': file_info['content_source'],
+                        'original_length': len(content),
+                        'summary_length': len(response.summary),
+                        'subsummary_count': response.subsummary_count,
+                        'levels_used': response.levels_used,
+                        'total_tokens': response.total_tokens,
+                        'mime_type': file_info['mime_type'],
+                        'category': file_info['category'],
+                        'language': file_info['language'],
+                        'summarization_timestamp': pd.Timestamp.now().isoformat()
+                    })
+                    
+                    processed_count += 1
+                    logger.info(f"Created summary for {file_name} ({len(response.summary)} chars from {len(content)} chars)")
+                    
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"Failed to create summary for {file_name}: {e}")
+            
+            # Final progress update
+            if progress_callback:
+                progress_callback({
+                    'current_file': 'Saving summaries...',
+                    'processed': processed_count,
+                    'total': len(content_files),
+                    'skipped': skipped_count,
+                    'errors': error_count,
+                    'phase': 'saving'
+                })
+            
+            # Combine with existing data and save
+            all_summaries = existing_data + summaries
+            
+            if all_summaries:
+                df_summaries = pd.DataFrame(all_summaries)
+                df_summaries.to_parquet(output_path, index=False)
+                logger.info(f"Saved {len(all_summaries)} total summaries to {output_path}")
+                return True
+            else:
+                logger.warning("No summaries to save")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error processing summaries: {e}")
             return False

@@ -1007,6 +1007,150 @@ def process_phrases(
     console.print(f"📁 Phrases saved to: [bold blue]{output_path}[/bold blue]")
 
 
+@app.command("create-summaries")
+def create_summaries(
+    index_file: str = typer.Option(
+        GOOGLE_DRIVE_INDEX_FILE, "--index", "-i", help="Google Drive index file to read from"
+    ),
+    pdf_extractions_file: str = typer.Option(
+        "pdf_extractions.parquet", "--pdf-extractions", help="PDF extractions file to use"
+    ),
+    output_file: str = typer.Option(
+        "content_summaries.parquet", "--output", "-o", help="Output file for summaries"
+    ),
+    max_tokens: int = typer.Option(
+        10000, "--max-tokens", help="Maximum tokens per summary chunk (max: 131,072)"
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-n", help="Limit number of files to process"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Force re-processing even if summaries exist"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show detailed progress information"
+    ),
+):
+    """Create summaries from file content using BookWyrm summarization API."""
+    
+    index_path = DATA_DIR / index_file
+    output_path = DATA_DIR / output_file
+    
+    if not index_path.exists():
+        console.print(f"❌ Index file {index_file} not found at {index_path}", style="red")
+        console.print("Please run Google Drive indexing first:", style="yellow")
+        console.print("  [bold]agentvault index-drive[/bold]")
+        raise typer.Exit(1)
+    
+    # Validate max_tokens
+    if max_tokens > 131072:
+        console.print(f"❌ max_tokens cannot exceed 131,072 (got {max_tokens})", style="red")
+        raise typer.Exit(1)
+    if max_tokens < 1:
+        console.print(f"❌ max_tokens must be at least 1 (got {max_tokens})", style="red")
+        raise typer.Exit(1)
+    
+    # Check if output already exists
+    if not force and output_path.exists():
+        if not typer.confirm(f"Summaries file {output_file} already exists. Continue anyway?"):
+            console.print("❌ Processing cancelled", style="yellow")
+            raise typer.Exit()
+    
+    # Check prerequisites before starting
+    processor = GoogleDriveProcessor()
+    
+    if not processor.bookwyrm_client:
+        console.print("❌ BookWyrm API key not found", style="red")
+        console.print("\n📋 [bold]Setup Instructions:[/bold]", style="yellow")
+        console.print("1. Get an API key from https://api.bookwyrm.ai", style="yellow")
+        console.print("2. Set environment variable:", style="yellow")
+        console.print("   [cyan]export BOOKWYRM_API_KEY='your-api-key-here'[/cyan]", style="yellow")
+        console.print("3. Run the command again", style="yellow")
+        raise typer.Exit(1)
+    
+    # Import the HAS_PDF_SUPPORT flag
+    from .google_drive_processor import HAS_PDF_SUPPORT
+    
+    if not HAS_PDF_SUPPORT:
+        console.print("❌ Summarization not supported in current BookWyrm client", style="red")
+        console.print("\n📋 [bold]Upgrade Instructions:[/bold]", style="yellow")
+        console.print("1. Upgrade BookWyrm client:", style="yellow")
+        console.print("   [cyan]pip install --upgrade bookwyrm-client[/cyan]", style="yellow")
+        console.print("2. Or install from source if needed", style="yellow")
+        console.print("3. Run the command again", style="yellow")
+        raise typer.Exit(1)
+    
+    console.print(Panel.fit("📝 Starting Content Summarization", style="bold blue"))
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TextColumn("[bold blue]{task.fields[processed]} processed"),
+        TextColumn("[bold yellow]{task.fields[skipped]} skipped"),
+        TextColumn("[bold red]{task.fields[errors]} errors"),
+        console=console,
+        transient=False,
+    ) as progress:
+        
+        try:
+            # Processing task
+            process_task = progress.add_task(
+                "📝 Creating summaries...", total=None, processed=0, skipped=0, errors=0
+            )
+            
+            def update_progress(stats):
+                phase = stats.get('phase', 'processing')
+                current_file = stats.get('current_file', '')
+                
+                if phase == 'saving':
+                    description = "💾 Saving summaries..."
+                else:
+                    if verbose and current_file:
+                        description = f"📝 Processing: {current_file}"
+                    else:
+                        description = f"📝 Creating summaries... ({stats['processed']} processed)"
+                
+                progress.update(
+                    process_task,
+                    description=description,
+                    total=stats.get('total', None),
+                    completed=stats['processed'],
+                    processed=stats['processed'],
+                    skipped=stats['skipped'],
+                    errors=stats['errors']
+                )
+                
+                if verbose and current_file and phase != 'saving':
+                    console.print(f"  📝 {current_file}", style="dim")
+            
+            success = processor.process_summaries_from_content(
+                index_file=index_file,
+                pdf_extractions_file=pdf_extractions_file,
+                output_file=output_file,
+                progress_callback=update_progress,
+                limit=limit,
+                max_tokens=max_tokens
+            )
+            
+            if not success:
+                console.print("❌ Summarization failed", style="red")
+                raise typer.Exit(1)
+            
+            progress.update(process_task, description="✅ Summarization completed")
+            
+        except KeyboardInterrupt:
+            console.print("\n⚠️  Summarization interrupted by user", style="yellow")
+            raise typer.Exit(1)
+        except Exception as e:
+            console.print(f"❌ Error during summarization: {e}", style="red")
+            raise typer.Exit(1)
+    
+    console.print("✅ Content summarization completed!", style="green bold")
+    console.print(f"📁 Summaries saved to: [bold blue]{output_path}[/bold blue]")
+
+
 @app.command("version")
 def version():
     """Show version information."""
