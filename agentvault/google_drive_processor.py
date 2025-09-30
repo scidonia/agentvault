@@ -1092,17 +1092,9 @@ class GoogleDriveProcessor:
                     
                     logger.info(f"Sending {len(content)} chars for summarization of {file_name}")
                     
-                    # Try using JSONL format instead of direct content
-                    # Create a simple JSONL with the content as a single chunk
-                    jsonl_content = json.dumps({
-                        "text": content,
-                        "start_char": 0,
-                        "end_char": len(content)
-                    })
-                    
-                    # Create summarization request with JSONL content
+                    # Create summarization request with plain content
                     request = SummarizeRequest(
-                        content=jsonl_content,
+                        content=content,
                         max_tokens=max_tokens,
                         debug=False
                     )
