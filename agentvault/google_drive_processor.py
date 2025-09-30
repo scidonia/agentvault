@@ -49,14 +49,14 @@ except ImportError as e:
 
 # Import Pinecone library
 try:
-    import pinecone
-    from pinecone import ServerlessSpec
+    from pinecone import Pinecone, CloudProvider, ServerlessSpec
     HAS_PINECONE_SUPPORT = True
 except ImportError as e:
     print(f"⚠️  Pinecone indexing not available: {e}")
     print("To enable Pinecone indexing, install: uv add pinecone")
     HAS_PINECONE_SUPPORT = False
-    pinecone = None
+    Pinecone = None
+    CloudProvider = None
     ServerlessSpec = None
 
 from .config import (
@@ -1668,7 +1668,7 @@ class GoogleDriveProcessor:
             
         try:
             # Initialize Pinecone
-            self.pinecone_client = pinecone.Pinecone(api_key=PINECONE_API_KEY)
+            self.pinecone_client = Pinecone(api_key=PINECONE_API_KEY)
             logger.info("Pinecone client initialized successfully")
             
         except Exception as e:
@@ -1686,17 +1686,13 @@ class GoogleDriveProcessor:
             # Create dense index with integrated embedding if it doesn't exist
             if TITLES_DENSE_INDEX not in existing_indexes:
                 logger.info(f"Creating dense index with integrated embedding: {TITLES_DENSE_INDEX}")
-                # Parse environment string (e.g., "europe-west4-gcp" -> cloud="gcp", region="europe-west4")
-                parts = PINECONE_ENVIRONMENT.split('-')
-                cloud = parts[-1]  # Last part is cloud provider
-                region = '-'.join(parts[:-1])  # Everything except last part is region
                 
                 self.pinecone_client.create_index_for_model(
                     name=TITLES_DENSE_INDEX,
-                    cloud=cloud,
-                    region=region,
+                    cloud=CloudProvider.AWS,
+                    region="us-east-1",
                     embed={
-                        "model": "multilingual-e5-large",
+                        "model": "llama-text-embed-v2",
                         "field_map": {"text": "content"}
                     }
                 )
@@ -1704,15 +1700,11 @@ class GoogleDriveProcessor:
             # Create sparse index with integrated embedding if it doesn't exist
             if TITLES_SPARSE_INDEX not in existing_indexes:
                 logger.info(f"Creating sparse index with integrated embedding: {TITLES_SPARSE_INDEX}")
-                # Parse environment string (e.g., "europe-west4-gcp" -> cloud="gcp", region="europe-west4")
-                parts = PINECONE_ENVIRONMENT.split('-')
-                cloud = parts[-1]  # Last part is cloud provider
-                region = '-'.join(parts[:-1])  # Everything except last part is region
                 
                 self.pinecone_client.create_index_for_model(
                     name=TITLES_SPARSE_INDEX,
-                    cloud=cloud,
-                    region=region,
+                    cloud=CloudProvider.AWS,
+                    region="us-east-1",
                     embed={
                         "model": "pinecone-sparse-english-v0",
                         "field_map": {"text": "content"}
@@ -1831,21 +1823,17 @@ class GoogleDriveProcessor:
                         }
                         
                         # Create records for both indexes using Pinecone's integrated embedding
-                        # Dense index record - use field name from field_map
+                        # Dense index record - use raw text, Pinecone will embed it
                         batch_dense.append({
                             'id': file_hash,
-                            'values': {
-                                'content': combined_text  # Field name matches field_map
-                            },
+                            'content': combined_text,  # Raw text for integrated embedding
                             'metadata': metadata
                         })
                         
-                        # Sparse index record - use field name from field_map
+                        # Sparse index record - use raw text, Pinecone will embed it
                         batch_sparse.append({
                             'id': file_hash,
-                            'values': {
-                                'content': combined_text  # Field name matches field_map
-                            },
+                            'content': combined_text,  # Raw text for integrated embedding
                             'metadata': metadata
                         })
                         
