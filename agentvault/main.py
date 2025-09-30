@@ -1162,6 +1162,53 @@ def index_titles(
     console.print("🔍 Your title cards are now searchable in Pinecone!", style="green")
 
 
+@app.command("clear-indexes")
+def clear_indexes(
+    confirm: bool = typer.Option(
+        False, "--confirm", help="Skip confirmation prompt"
+    ),
+):
+    """Clear and recreate Pinecone indexes."""
+    
+    if not confirm:
+        console.print("⚠️  This will permanently delete all indexed title cards!", style="red bold")
+        if not typer.confirm("Are you sure you want to clear the indexes?"):
+            console.print("❌ Operation cancelled", style="yellow")
+            raise typer.Exit()
+    
+    # Check for Pinecone API key
+    pinecone_api_key = os.getenv("PINECONE_API_KEY")
+    if not pinecone_api_key:
+        console.print("❌ PINECONE_API_KEY environment variable not found", style="red")
+        raise typer.Exit(1)
+    
+    # Check for Pinecone support
+    processor = GoogleDriveProcessor()
+    
+    if not processor.pinecone_client:
+        console.print("❌ Pinecone client not available", style="red")
+        console.print("\n📋 [bold]Installation Instructions:[/bold]", style="yellow")
+        console.print("1. Install Pinecone dependencies:", style="yellow")
+        console.print("   [cyan]uv add pinecone[/cyan]", style="yellow")
+        raise typer.Exit(1)
+    
+    console.print(Panel.fit("🗑️  Clearing Pinecone Indexes", style="bold red"))
+    
+    try:
+        success = processor.clear_pinecone_indexes()
+        
+        if success:
+            console.print("✅ Indexes cleared and recreated successfully!", style="green bold")
+            console.print("💡 You can now run [bold]agentvault index-titles[/bold] to reindex your title cards", style="blue")
+        else:
+            console.print("❌ Failed to clear indexes", style="red")
+            raise typer.Exit(1)
+            
+    except Exception as e:
+        console.print(f"❌ Error clearing indexes: {e}", style="red")
+        raise typer.Exit(1)
+
+
 @app.command("version")
 def version():
     """Show version information."""

@@ -1693,7 +1693,7 @@ class GoogleDriveProcessor:
                     region="us-east-1",
                     embed={
                         "model": "llama-text-embed-v2",
-                        "field_map": {"text": "content"}
+                        "field_map": {"text": "text"}
                     }
                 )
             
@@ -1707,7 +1707,7 @@ class GoogleDriveProcessor:
                     region="us-east-1",
                     embed={
                         "model": "pinecone-sparse-english-v0",
-                        "field_map": {"text": "content"}
+                        "field_map": {"text": "text"}
                     }
                 )
             
@@ -1823,17 +1823,17 @@ class GoogleDriveProcessor:
                         }
                         
                         # Create records for both indexes using Pinecone's integrated embedding
-                        # Dense index record - use raw text, Pinecone will embed it
+                        # Dense index record - use field name that matches field_map
                         batch_dense.append({
                             'id': file_hash,
-                            'content': combined_text,  # Raw text for integrated embedding
+                            'text': combined_text,  # Field name matches field_map {"text": "text"}
                             'metadata': metadata
                         })
                         
-                        # Sparse index record - use raw text, Pinecone will embed it
+                        # Sparse index record - use field name that matches field_map
                         batch_sparse.append({
                             'id': file_hash,
-                            'content': combined_text,  # Raw text for integrated embedding
+                            'text': combined_text,  # Field name matches field_map {"text": "text"}
                             'metadata': metadata
                         })
                         
@@ -1872,4 +1872,34 @@ class GoogleDriveProcessor:
             
         except Exception as e:
             logger.error(f"Error indexing title cards in Pinecone: {e}")
+            return False
+
+    def clear_pinecone_indexes(self) -> bool:
+        """Clear and recreate Pinecone indexes."""
+        if not self.pinecone_client:
+            logger.error("Pinecone client not initialized")
+            return False
+            
+        try:
+            existing_indexes = [index.name for index in self.pinecone_client.list_indexes()]
+            
+            # Delete existing indexes
+            if TITLES_DENSE_INDEX in existing_indexes:
+                logger.info(f"Deleting dense index: {TITLES_DENSE_INDEX}")
+                self.pinecone_client.delete_index(TITLES_DENSE_INDEX)
+            
+            if TITLES_SPARSE_INDEX in existing_indexes:
+                logger.info(f"Deleting sparse index: {TITLES_SPARSE_INDEX}")
+                self.pinecone_client.delete_index(TITLES_SPARSE_INDEX)
+            
+            # Wait a moment for deletion to complete
+            import time
+            time.sleep(5)
+            
+            # Recreate indexes
+            logger.info("Recreating indexes with correct field mapping...")
+            return self._ensure_pinecone_indexes()
+            
+        except Exception as e:
+            logger.error(f"Error clearing Pinecone indexes: {e}")
             return False
