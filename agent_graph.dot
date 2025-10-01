@@ -1,0 +1,138 @@
+digraph TitleCardQueryAgent {
+    // Graph attributes
+    rankdir=TB;
+    bgcolor="white";
+    fontname="Arial";
+    fontsize=14;
+    labelloc="t";
+    label="Title Card Query Agent - LangGraph Workflow";
+    
+    // Node styling
+    node [
+        shape=box,
+        style="rounded,filled",
+        fontname="Arial",
+        fontsize=12,
+        margin=0.3
+    ];
+    
+    // Edge styling
+    edge [
+        fontname="Arial",
+        fontsize=10,
+        color="#666666"
+    ];
+    
+    // Input/Output nodes
+    start [
+        label="🔍 User Question\n(Input)",
+        fillcolor="#E3F2FD",
+        color="#1976D2",
+        fontcolor="#1976D2"
+    ];
+    
+    end [
+        label="🤖 Final Answer\n+ Citations\n(Output)",
+        fillcolor="#E8F5E8",
+        color="#388E3C",
+        fontcolor="#388E3C"
+    ];
+    
+    // Processing nodes
+    search_titles [
+        label="🔍 Search Title Cards\n\n• Generate question embedding\n• Vector search in LanceDB\n• Find top 50 similar documents\n• Calculate similarity threshold",
+        fillcolor="#FFF3E0",
+        color="#F57C00",
+        fontcolor="#E65100"
+    ];
+    
+    gather_phrases [
+        label="📚 Gather Phrases\n\n• Load phrasal data from parquet\n• Filter phrases for relevant docs\n• Organize by document\n• Select top excerpts per doc",
+        fillcolor="#F3E5F5",
+        color="#7B1FA2",
+        fontcolor="#4A148C"
+    ];
+    
+    generate_answer [
+        label="🤖 Generate Answer\n\n• Create structured citations\n• Combine summaries + excerpts\n• Generate comprehensive answer\n• Include citation references",
+        fillcolor="#E0F2F1",
+        color="#00796B",
+        fontcolor="#004D40"
+    ];
+    
+    // Data stores (external dependencies)
+    subgraph cluster_data {
+        label="Data Sources";
+        style="dashed";
+        color="#BDBDBD";
+        fontcolor="#757575";
+        
+        lancedb [
+            label="🗄️ LanceDB\n(Vector Store)",
+            shape=cylinder,
+            fillcolor="#FFEBEE",
+            color="#C62828",
+            fontcolor="#B71C1C"
+        ];
+        
+        phrases_db [
+            label="📄 Phrases Parquet\n(Text Excerpts)",
+            shape=cylinder,
+            fillcolor="#FFEBEE",
+            color="#C62828",
+            fontcolor="#B71C1C"
+        ];
+        
+        openai [
+            label="🧠 OpenAI API\n(Embeddings + Chat)",
+            shape=ellipse,
+            fillcolor="#FFF8E1",
+            color="#FF8F00",
+            fontcolor="#E65100"
+        ];
+    }
+    
+    // State flow
+    start -> search_titles [label="user_question"];
+    search_titles -> gather_phrases [label="search_results\nsearch_threshold"];
+    gather_phrases -> generate_answer [label="relevant_phrases"];
+    generate_answer -> end [label="final_answer\ncitations"];
+    
+    // Data dependencies
+    search_titles -> lancedb [style=dashed, label="vector search", color="#C62828"];
+    search_titles -> openai [style=dashed, label="embedding", color="#FF8F00"];
+    gather_phrases -> phrases_db [style=dashed, label="load phrases", color="#C62828"];
+    generate_answer -> openai [style=dashed, label="chat completion", color="#FF8F00"];
+    
+    // State information box
+    subgraph cluster_state {
+        label="Query State (TypedDict)";
+        style="dotted";
+        color="#9E9E9E";
+        fontcolor="#616161";
+        
+        state_info [
+            label="📋 State Variables:\n\n• user_question: str\n• search_results: List[Dict]\n• relevant_phrases: List[Dict]\n• citations: List[Dict]\n• final_answer: str\n• search_threshold: float\n• error: Optional[str]",
+            shape=note,
+            fillcolor="#FAFAFA",
+            color="#9E9E9E",
+            fontcolor="#424242"
+        ];
+    }
+    
+    // Processing details
+    subgraph cluster_details {
+        label="Key Processing Details";
+        style="dotted";
+        color="#607D8B";
+        fontcolor="#455A64";
+        
+        details [
+            label="⚙️ Configuration:\n\n• Top-K: 50 documents\n• Embedding Model: OpenAI\n• Vector DB: LanceDB\n• Max phrases per doc: 20\n• Answer generation: GPT-4\n• Temperature: 0.3",
+            shape=note,
+            fillcolor="#ECEFF1",
+            color="#607D8B",
+            fontcolor="#37474F"
+        ];
+    }
+}
