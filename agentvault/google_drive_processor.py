@@ -1816,28 +1816,17 @@ class GoogleDriveProcessor:
             from pathlib import Path
             db_path = Path(LANCEDB_URI)
             
-            print(f"DEBUG: Attempting to initialize LanceDB at: {db_path}")
-            print(f"DEBUG: Absolute path: {db_path.absolute()}")
-            print(f"DEBUG: Parent directory: {db_path.parent}")
-            print(f"DEBUG: Parent exists: {db_path.parent.exists()}")
-            
             # Ensure the parent directory exists
             db_path.parent.mkdir(parents=True, exist_ok=True)
-            print(f"DEBUG: Parent directory created/verified")
             
             # Connect to LanceDB (this will create the database if it doesn't exist)
-            print(f"DEBUG: Connecting to LanceDB...")
             self.lancedb_client = lancedb.connect(str(db_path))
-            print(f"DEBUG: LanceDB connection successful")
             logger.info(f"LanceDB client initialized successfully at {db_path}")
 
         except Exception as e:
-            print(f"DEBUG: LanceDB initialization failed with error: {e}")
-            print(f"DEBUG: Error type: {type(e)}")
-            import traceback
-            print(f"DEBUG: Full traceback:\n{traceback.format_exc()}")
             logger.error(f"Failed to initialize LanceDB client: {e}")
-            self.lancedb_client = None
+            # Don't set to None - let it raise the exception so we can see what's wrong
+            raise
 
     def _init_openai_client(self):
         """Initialize OpenAI client for embeddings."""
