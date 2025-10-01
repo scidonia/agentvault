@@ -1350,6 +1350,86 @@ def clear_indexes(
         raise typer.Exit(1)
 
 
+@app.command("query")
+def query_agent(
+    interactive: bool = typer.Option(
+        True, "--interactive/--no-interactive", "-i", help="Run in interactive mode"
+    ),
+    question: Optional[str] = typer.Argument(None, help="Single question to ask"),
+):
+    """Interactive query agent for searching and answering questions about your documents."""
+    
+    if not interactive and not question:
+        console.print("❌ Please provide a question or use --interactive mode", style="red")
+        raise typer.Exit(1)
+
+    try:
+        from .query_agent import TitleCardQueryAgent
+    except ImportError as e:
+        console.print(f"❌ Missing dependencies: {e}", style="red")
+        console.print("Please install: uv add langgraph langchain-core", style="yellow")
+        raise typer.Exit(1)
+
+    # Initialize agent
+    try:
+        agent = TitleCardQueryAgent()
+        
+        # Check prerequisites
+        if not agent.lancedb_client:
+            console.print("❌ LanceDB client not available", style="red")
+            console.print("Please run: agentvault index-titles", style="yellow")
+            raise typer.Exit(1)
+            
+        if not agent.openai_client:
+            console.print("❌ OpenAI client not available", style="red")
+            console.print("Please set OPENAI_API_KEY environment variable", style="yellow")
+            raise typer.Exit(1)
+            
+    except Exception as e:
+        console.print(f"❌ Failed to initialize agent: {e}", style="red")
+        raise typer.Exit(1)
+
+    if not interactive and question:
+        # Single question mode
+        console.print(f"🔍 Processing: {question}", style="blue")
+        
+        response = agent.query(question)
+        
+        if response.get("error"):
+            console.print(f"❌ Error: {response['error']}", style="red")
+            raise typer.Exit(1)
+
+        # Display results
+        console.print(f"\n📊 Found {response['search_results_count']} relevant documents", style="dim")
+        console.print(f"🎯 Search threshold: {response['search_threshold']:.4f}", style="dim")
+        
+        # Show answer
+        console.print(Panel(response["answer"], title="🤖 Answer", border_style="green"))
+        
+        # Show citations
+        if response["citations"]:
+            from rich.table import Table
+            citations_table = Table(title="📚 Citations", show_header=True, header_style="bold magenta")
+            citations_table.add_column("ID", style="cyan", width=4)
+            citations_table.add_column("Title", style="green", width=30)
+            citations_table.add_column("Author", style="yellow", width=20)
+            citations_table.add_column("Relevance", style="blue", width=10)
+            
+            for citation in response["citations"]:
+                citations_table.add_row(
+                    f"[{citation['id']}]",
+                    citation["title"][:30] + "..." if len(citation["title"]) > 30 else citation["title"],
+                    citation["author"][:20] + "..." if len(citation["author"]) > 20 else citation["author"],
+                    f"{citation['similarity_score']:.3f}",
+                )
+            
+            console.print(citations_table)
+    else:
+        # Interactive mode
+        from .query_agent import main as query_main
+        query_main()
+
+
 @app.command("version")
 def version():
     """Show version information."""
