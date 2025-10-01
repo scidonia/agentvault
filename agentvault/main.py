@@ -1350,6 +1350,273 @@ def clear_indexes(
         raise typer.Exit(1)
 
 
+@app.command("process-all")
+def process_all(
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Force re-processing even if files exist"
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", "-n", help="Limit number of files to process at each stage"
+    ),
+    skip_drive_index: bool = typer.Option(
+        False, "--skip-drive-index", help="Skip Google Drive indexing (use existing index)"
+    ),
+    skip_pdf_extraction: bool = typer.Option(
+        False, "--skip-pdf-extraction", help="Skip PDF text extraction"
+    ),
+    skip_phrases: bool = typer.Option(
+        False, "--skip-phrases", help="Skip phrasal processing"
+    ),
+    skip_summaries: bool = typer.Option(
+        False, "--skip-summaries", help="Skip summary creation"
+    ),
+    skip_title_cards: bool = typer.Option(
+        False, "--skip-title-cards", help="Skip title card creation"
+    ),
+    skip_indexing: bool = typer.Option(
+        False, "--skip-indexing", help="Skip LanceDB indexing"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show detailed progress information"
+    ),
+    max_tokens: int = typer.Option(
+        10000, "--max-tokens", help="Maximum tokens per summary chunk"
+    ),
+    batch_size: int = typer.Option(
+        100, "--batch-size", help="Batch size for LanceDB indexing"
+    ),
+):
+    """Run the complete processing pipeline from Google Drive indexing to title card indexing."""
+    
+    console.print(Panel.fit("🚀 Starting Complete Processing Pipeline", style="bold blue"))
+    
+    # Track overall progress
+    stages = []
+    if not skip_drive_index:
+        stages.append("Google Drive Indexing")
+    if not skip_pdf_extraction:
+        stages.append("PDF Text Extraction")
+    if not skip_phrases:
+        stages.append("Phrasal Processing")
+    if not skip_summaries:
+        stages.append("Summary Creation")
+    if not skip_title_cards:
+        stages.append("Title Card Creation")
+    if not skip_indexing:
+        stages.append("LanceDB Indexing")
+    
+    console.print(f"📋 Pipeline stages: {', '.join(stages)}", style="dim")
+    
+    current_stage = 0
+    total_stages = len(stages)
+    
+    try:
+        # Stage 1: Google Drive Indexing
+        if not skip_drive_index:
+            current_stage += 1
+            console.print(f"\n🔄 Stage {current_stage}/{total_stages}: Google Drive Indexing", style="bold cyan")
+            
+            # Check if index exists and force flag
+            index_path = DATA_DIR / GOOGLE_DRIVE_INDEX_FILE
+            if not force and index_path.exists():
+                console.print("✅ Google Drive index already exists (use --force to reindex)", style="green")
+            else:
+                # Run drive indexing
+                from typer.testing import CliRunner
+                runner = CliRunner()
+                
+                # Build command args
+                cmd_args = ["index-drive"]
+                if force:
+                    cmd_args.append("--force")
+                if verbose:
+                    cmd_args.append("--verbose")
+                if limit:
+                    cmd_args.extend(["--limit", str(limit)])
+                
+                # We can't easily call the command directly, so we'll use the processor
+                processor = GoogleDriveProcessor()
+                
+                def drive_progress(stats):
+                    if verbose:
+                        console.print(f"  📁 {stats.get('current_file', 'Processing...')}", style="dim")
+                
+                if not processor.authenticate(debug=verbose):
+                    console.print("❌ Failed to authenticate with Google Drive", style="red")
+                    raise typer.Exit(1)
+                
+                success = processor.process_drive(
+                    GOOGLE_DRIVE_INDEX_FILE,
+                    progress_callback=drive_progress,
+                    limit=limit
+                )
+                
+                if not success:
+                    console.print("❌ Google Drive indexing failed", style="red")
+                    raise typer.Exit(1)
+                
+                console.print("✅ Google Drive indexing completed", style="green")
+        
+        # Stage 2: PDF Text Extraction
+        if not skip_pdf_extraction:
+            current_stage += 1
+            console.print(f"\n🔄 Stage {current_stage}/{total_stages}: PDF Text Extraction", style="bold cyan")
+            
+            pdf_path = DATA_DIR / "pdf_extractions.parquet"
+            if not force and pdf_path.exists():
+                console.print("✅ PDF extractions already exist (use --force to re-extract)", style="green")
+            else:
+                processor = GoogleDriveProcessor()
+                
+                def pdf_progress(stats):
+                    if verbose:
+                        console.print(f"  📄 {stats.get('current_file', 'Processing...')}", style="dim")
+                
+                success = processor.process_pdf_extractions(
+                    progress_callback=pdf_progress,
+                    limit=limit
+                )
+                
+                if not success:
+                    console.print("⚠️  PDF extraction failed or no PDFs found", style="yellow")
+                else:
+                    console.print("✅ PDF text extraction completed", style="green")
+        
+        # Stage 3: Phrasal Processing
+        if not skip_phrases:
+            current_stage += 1
+            console.print(f"\n🔄 Stage {current_stage}/{total_stages}: Phrasal Processing", style="bold cyan")
+            
+            phrases_path = DATA_DIR / "content_phrases.parquet"
+            if not force and phrases_path.exists():
+                console.print("✅ Phrases already exist (use --force to re-process)", style="green")
+            else:
+                processor = GoogleDriveProcessor()
+                
+                def phrases_progress(stats):
+                    if verbose:
+                        console.print(f"  🔤 {stats.get('current_file', 'Processing...')}", style="dim")
+                
+                success = processor.process_phrases_from_all_content(
+                    progress_callback=phrases_progress,
+                    limit=limit
+                )
+                
+                if not success:
+                    console.print("❌ Phrasal processing failed", style="red")
+                    raise typer.Exit(1)
+                
+                console.print("✅ Phrasal processing completed", style="green")
+        
+        # Stage 4: Summary Creation
+        if not skip_summaries:
+            current_stage += 1
+            console.print(f"\n🔄 Stage {current_stage}/{total_stages}: Summary Creation", style="bold cyan")
+            
+            summaries_path = DATA_DIR / "content_summaries.parquet"
+            if not force and summaries_path.exists():
+                console.print("✅ Summaries already exist (use --force to re-create)", style="green")
+            else:
+                processor = GoogleDriveProcessor()
+                
+                def summaries_progress(stats):
+                    if verbose:
+                        console.print(f"  📝 {stats.get('current_file', 'Processing...')}", style="dim")
+                
+                # Get API token
+                api_token = os.getenv("BOOKWYRM_API_KEY")
+                if not api_token:
+                    console.print("❌ BOOKWYRM_API_KEY environment variable not found", style="red")
+                    console.print("Please set your BookWyrm API key to continue", style="yellow")
+                    raise typer.Exit(1)
+                
+                success = processor.process_summaries_via_endpoint(
+                    progress_callback=summaries_progress,
+                    limit=limit,
+                    max_tokens=max_tokens,
+                    api_token=api_token
+                )
+                
+                if not success:
+                    console.print("❌ Summary creation failed", style="red")
+                    raise typer.Exit(1)
+                
+                console.print("✅ Summary creation completed", style="green")
+        
+        # Stage 5: Title Card Creation
+        if not skip_title_cards:
+            current_stage += 1
+            console.print(f"\n🔄 Stage {current_stage}/{total_stages}: Title Card Creation", style="bold cyan")
+            
+            title_cards_path = DATA_DIR / "title_cards.parquet"
+            if not force and title_cards_path.exists():
+                console.print("✅ Title cards already exist (use --force to re-create)", style="green")
+            else:
+                processor = GoogleDriveProcessor()
+                
+                def title_cards_progress(stats):
+                    if verbose:
+                        console.print(f"  🎴 {stats.get('current_file', 'Processing...')}", style="dim")
+                
+                success = processor.create_title_cards(
+                    progress_callback=title_cards_progress,
+                    limit=limit
+                )
+                
+                if not success:
+                    console.print("❌ Title card creation failed", style="red")
+                    raise typer.Exit(1)
+                
+                console.print("✅ Title card creation completed", style="green")
+        
+        # Stage 6: LanceDB Indexing
+        if not skip_indexing:
+            current_stage += 1
+            console.print(f"\n🔄 Stage {current_stage}/{total_stages}: LanceDB Indexing", style="bold cyan")
+            
+            processor = GoogleDriveProcessor()
+            
+            # Check prerequisites
+            if processor.lancedb_client is None:
+                console.print("❌ LanceDB client initialization failed", style="red")
+                raise typer.Exit(1)
+            
+            if not processor.openai_client:
+                console.print("❌ OpenAI client not available", style="red")
+                console.print("Please set OPENAI_API_KEY environment variable", style="yellow")
+                raise typer.Exit(1)
+            
+            def indexing_progress(stats):
+                if verbose:
+                    console.print(f"  🔍 {stats.get('current_file', 'Processing...')}", style="dim")
+            
+            success = processor.index_title_cards_in_lancedb(
+                progress_callback=indexing_progress,
+                limit=limit,
+                batch_size=batch_size
+            )
+            
+            if not success:
+                console.print("❌ LanceDB indexing failed", style="red")
+                raise typer.Exit(1)
+            
+            console.print("✅ LanceDB indexing completed", style="green")
+        
+        # Pipeline completed successfully
+        console.print(Panel.fit("🎉 Complete Processing Pipeline Finished Successfully!", style="bold green"))
+        console.print("\n📋 [bold]What's Next:[/bold]", style="blue")
+        console.print("• Run [cyan]agentvault query --interactive[/cyan] to start asking questions", style="blue")
+        console.print("• Use [cyan]agentvault drive-summary[/cyan] to see processing statistics", style="blue")
+        console.print("• Check [cyan]agentvault list[/cyan] to browse your indexed documents", style="blue")
+        
+    except KeyboardInterrupt:
+        console.print("\n⚠️  Pipeline interrupted by user", style="yellow")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"\n❌ Pipeline failed at stage {current_stage}: {e}", style="red")
+        raise typer.Exit(1)
+
+
 @app.command("query")
 def query_agent(
     interactive: bool = typer.Option(
