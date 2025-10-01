@@ -1825,8 +1825,7 @@ class GoogleDriveProcessor:
 
         except Exception as e:
             logger.error(f"Failed to initialize LanceDB client: {e}")
-            # Don't set to None - let it raise the exception so we can see what's wrong
-            raise
+            self.lancedb_client = None
 
     def _init_openai_client(self):
         """Initialize OpenAI client for embeddings."""
