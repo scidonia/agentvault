@@ -377,11 +377,10 @@ def list_files(
 ):
     """List files from the Google Drive index with filtering and customizable columns."""
 
-    index_path = DATA_DIR / index_file
-
-    if not index_path.exists():
+    # Check if we have index data in the partitioned directory
+    if not GOOGLE_DRIVE_INDEX_DIR.exists() or not list(GOOGLE_DRIVE_INDEX_DIR.glob("*.parquet")):
         console.print(
-            f"❌ Index file {index_file} not found at {index_path}", style="red"
+            f"❌ No index data found in {GOOGLE_DRIVE_INDEX_DIR}", style="red"
         )
         console.print("Please run Google Drive indexing first:", style="yellow")
         console.print("  [bold]agentvault index-drive[/bold]")
@@ -389,10 +388,16 @@ def list_files(
 
     try:
         import pandas as pd
-
-        df = pd.read_parquet(index_path)
+        
+        # Load all parquet files from the directory
+        parquet_files = list(GOOGLE_DRIVE_INDEX_DIR.glob("*.parquet"))
+        dfs = []
+        for file in parquet_files:
+            dfs.append(pd.read_parquet(file))
+        
+        df = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
     except Exception as e:
-        console.print(f"❌ Error reading index file: {e}", style="red")
+        console.print(f"❌ Error reading index files: {e}", style="red")
         raise typer.Exit(1)
 
     if df.empty:
