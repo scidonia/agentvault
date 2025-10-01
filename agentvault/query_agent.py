@@ -62,9 +62,22 @@ class TitleCardQueryAgent:
     def search_title_cards_node(self, state: QueryState) -> QueryState:
         """Node 1: Search for relevant title cards using vector similarity."""
         import sys
+        import os
         
         def update_status(message):
-            print(f"\r🔍 [Stage 1/3] {message}", end="", flush=True)
+            # Get terminal width, default to 80 if not available
+            try:
+                terminal_width = os.get_terminal_size().columns
+            except:
+                terminal_width = 80
+            
+            # Create the full message
+            full_message = f"🔍 [Stage 1/3] {message}"
+            
+            # Pad with spaces to clear any remaining characters
+            padded_message = full_message.ljust(terminal_width)
+            
+            print(f"\r{padded_message}", end="", flush=True)
         
         update_status("Searching for relevant documents...")
         logger.info(f"Searching title cards for: {state['user_question']}")
@@ -95,7 +108,15 @@ class TitleCardQueryAgent:
             )
 
             if search_results.empty:
-                print(f"\r🔍 [Stage 1/3] ⚠️  No relevant documents found" + " " * 20)
+                # Get terminal width for proper clearing
+                try:
+                    terminal_width = os.get_terminal_size().columns
+                except:
+                    terminal_width = 80
+            
+                message = "🔍 [Stage 1/3] ⚠️  No relevant documents found"
+                padded_message = message.ljust(terminal_width)
+                print(f"\r{padded_message}")
                 logger.warning("No title cards found in search")
                 state["search_results"] = []
                 state["search_threshold"] = 0.0
@@ -133,13 +154,29 @@ class TitleCardQueryAgent:
             state["search_results"] = results
             state["search_threshold"] = threshold
 
-            print(f"\r🔍 [Stage 1/3] ✅ Found {len(results)} documents (threshold: {threshold:.4f})" + " " * 20)
+            # Get terminal width for proper clearing
+            try:
+                terminal_width = os.get_terminal_size().columns
+            except:
+                terminal_width = 80
+            
+            message = f"🔍 [Stage 1/3] ✅ Found {len(results)} documents (threshold: {threshold:.4f})"
+            padded_message = message.ljust(terminal_width)
+            print(f"\r{padded_message}")
             logger.info(f"Found {len(results)} title cards, threshold: {threshold:.4f}")
             
             return state
 
         except Exception as e:
-            print(f"\r🔍 [Stage 1/3] ❌ Search failed: {str(e)}" + " " * 20)
+            # Get terminal width for proper clearing
+            try:
+                terminal_width = os.get_terminal_size().columns
+            except:
+                terminal_width = 80
+            
+            message = f"🔍 [Stage 1/3] ❌ Search failed: {str(e)}"
+            padded_message = message.ljust(terminal_width)
+            print(f"\r{padded_message}")
             logger.error(f"Error in search_title_cards_node: {e}")
             state["error"] = f"Search error: {str(e)}"
             return state
@@ -147,9 +184,22 @@ class TitleCardQueryAgent:
     def gather_phrases_node(self, state: QueryState) -> QueryState:
         """Node 2: Gather phrasal information for the relevant title cards."""
         import sys
+        import os
         
         def update_status(message):
-            print(f"\r📚 [Stage 2/3] {message}", end="", flush=True)
+            # Get terminal width, default to 80 if not available
+            try:
+                terminal_width = os.get_terminal_size().columns
+            except:
+                terminal_width = 80
+            
+            # Create the full message
+            full_message = f"📚 [Stage 2/3] {message}"
+            
+            # Pad with spaces to clear any remaining characters
+            padded_message = full_message.ljust(terminal_width)
+            
+            print(f"\r{padded_message}", end="", flush=True)
         
         update_status("Gathering detailed content...")
         logger.info("Gathering phrases for relevant title cards")
@@ -159,7 +209,15 @@ class TitleCardQueryAgent:
                 return state
 
             if not state["search_results"]:
-                print(f"\r📚 [Stage 2/3] ⚠️  No search results to process" + " " * 20)
+                # Get terminal width for proper clearing
+                try:
+                    terminal_width = os.get_terminal_size().columns
+                except:
+                    terminal_width = 80
+            
+                message = "📚 [Stage 2/3] ⚠️  No search results to process"
+                padded_message = message.ljust(terminal_width)
+                print(f"\r{padded_message}")
                 logger.warning("No search results to gather phrases for")
                 state["relevant_phrases"] = []
                 return state
@@ -168,7 +226,15 @@ class TitleCardQueryAgent:
             # Load phrases data
             phrases_file = DATA_DIR / "content_phrases.parquet"
             if not phrases_file.exists():
-                print(f"\r📚 [Stage 2/3] ⚠️  Using document summaries (no phrase data)" + " " * 20)
+                # Get terminal width for proper clearing
+                try:
+                    terminal_width = os.get_terminal_size().columns
+                except:
+                    terminal_width = 80
+            
+                message = "📚 [Stage 2/3] ⚠️  Using document summaries (no phrase data)"
+                padded_message = message.ljust(terminal_width)
+                print(f"\r{padded_message}")
                 logger.warning("Phrases file not found, using summaries from title cards")
                 state["relevant_phrases"] = []
                 return state
@@ -186,7 +252,15 @@ class TitleCardQueryAgent:
             ].copy()
 
             if relevant_phrases_df.empty:
-                print(f"\r📚 [Stage 2/3] ⚠️  No phrases found for relevant documents" + " " * 20)
+                # Get terminal width for proper clearing
+                try:
+                    terminal_width = os.get_terminal_size().columns
+                except:
+                    terminal_width = 80
+            
+                message = "📚 [Stage 2/3] ⚠️  No phrases found for relevant documents"
+                padded_message = message.ljust(terminal_width)
+                print(f"\r{padded_message}")
                 logger.warning("No phrases found for relevant title cards")
                 state["relevant_phrases"] = []
                 return state
@@ -225,13 +299,29 @@ class TitleCardQueryAgent:
                     })
 
             state["relevant_phrases"] = relevant_phrases
-            print(f"\r📚 [Stage 2/3] ✅ Gathered content from {len(relevant_phrases)} documents" + " " * 20)
+            # Get terminal width for proper clearing
+            try:
+                terminal_width = os.get_terminal_size().columns
+            except:
+                terminal_width = 80
+            
+            message = f"📚 [Stage 2/3] ✅ Gathered content from {len(relevant_phrases)} documents"
+            padded_message = message.ljust(terminal_width)
+            print(f"\r{padded_message}")
             logger.info(f"Gathered phrases from {len(relevant_phrases)} files")
 
             return state
 
         except Exception as e:
-            print(f"\r📚 [Stage 2/3] ❌ Content gathering failed: {str(e)}" + " " * 20)
+            # Get terminal width for proper clearing
+            try:
+                terminal_width = os.get_terminal_size().columns
+            except:
+                terminal_width = 80
+            
+            message = f"📚 [Stage 2/3] ❌ Content gathering failed: {str(e)}"
+            padded_message = message.ljust(terminal_width)
+            print(f"\r{padded_message}")
             logger.error(f"Error in gather_phrases_node: {e}")
             state["error"] = f"Phrase gathering error: {str(e)}"
             return state
@@ -239,9 +329,22 @@ class TitleCardQueryAgent:
     def generate_answer_node(self, state: QueryState) -> QueryState:
         """Node 3: Generate citations and answer based on the gathered information."""
         import sys
+        import os
         
         def update_status(message):
-            print(f"\r🤖 [Stage 3/3] {message}", end="", flush=True)
+            # Get terminal width, default to 80 if not available
+            try:
+                terminal_width = os.get_terminal_size().columns
+            except:
+                terminal_width = 80
+            
+            # Create the full message
+            full_message = f"🤖 [Stage 3/3] {message}"
+            
+            # Pad with spaces to clear any remaining characters
+            padded_message = full_message.ljust(terminal_width)
+            
+            print(f"\r{padded_message}", end="", flush=True)
         
         update_status("Generating comprehensive answer...")
         logger.info("Generating answer with citations")
@@ -251,7 +354,15 @@ class TitleCardQueryAgent:
                 return state
 
             if not state["search_results"]:
-                print(f"\r🤖 [Stage 3/3] ⚠️  No relevant documents to answer question" + " " * 20)
+                # Get terminal width for proper clearing
+                try:
+                    terminal_width = os.get_terminal_size().columns
+                except:
+                    terminal_width = 80
+            
+                message = "🤖 [Stage 3/3] ⚠️  No relevant documents to answer question"
+                padded_message = message.ljust(terminal_width)
+                print(f"\r{padded_message}")
                 state["final_answer"] = "I couldn't find any relevant documents to answer your question."
                 state["citations"] = []
                 return state
@@ -325,7 +436,15 @@ class TitleCardQueryAgent:
             update_status("Analyzing document content and context...")
             # Generate answer using OpenAI
             if not self.openai_client:
-                print(f"\r🤖 [Stage 3/3] ❌ AI assistant not available" + " " * 20)
+                # Get terminal width for proper clearing
+                try:
+                    terminal_width = os.get_terminal_size().columns
+                except:
+                    terminal_width = 80
+            
+                message = "🤖 [Stage 3/3] ❌ AI assistant not available"
+                padded_message = message.ljust(terminal_width)
+                print(f"\r{padded_message}")
                 state["final_answer"] = "OpenAI client not available for answer generation."
                 return state
 
@@ -369,12 +488,28 @@ Answer:"""
                 # Fallback - try to extract content
                 state["final_answer"] = str(response)
 
-            print(f"\r🤖 [Stage 3/3] ✅ Answer generated with citations" + " " * 20)
+            # Get terminal width for proper clearing
+            try:
+                terminal_width = os.get_terminal_size().columns
+            except:
+                terminal_width = 80
+            
+            message = "🤖 [Stage 3/3] ✅ Answer generated with citations"
+            padded_message = message.ljust(terminal_width)
+            print(f"\r{padded_message}")
             logger.info("Generated answer with citations")
             return state
 
         except Exception as e:
-            print(f"\r🤖 [Stage 3/3] ❌ Answer generation failed: {str(e)}" + " " * 20)
+            # Get terminal width for proper clearing
+            try:
+                terminal_width = os.get_terminal_size().columns
+            except:
+                terminal_width = 80
+            
+            message = f"🤖 [Stage 3/3] ❌ Answer generation failed: {str(e)}"
+            padded_message = message.ljust(terminal_width)
+            print(f"\r{padded_message}")
             logger.error(f"Error in generate_answer_node: {e}")
             state["error"] = f"Answer generation error: {str(e)}"
             state["final_answer"] = "I encountered an error while generating the answer."
