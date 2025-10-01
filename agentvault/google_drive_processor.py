@@ -562,6 +562,7 @@ class GoogleDriveProcessor:
                             "current_file": file_info.get("name", "Unknown"),
                             "current_path": file_info.get("path", ""),
                             "errors": error_count,
+                            "phase": "processing",
                         }
                     )
 
@@ -726,6 +727,13 @@ class GoogleDriveProcessor:
                 "PDF extraction not supported in this BookWyrm client version. Please upgrade bookwyrm-client."
             )
             return False
+
+        # Ensure Google Drive authentication
+        if not self.service:
+            logger.info("Google Drive service not authenticated, authenticating now...")
+            if not self.authenticate():
+                logger.error("Failed to authenticate with Google Drive for PDF extraction")
+                return False
 
         index_path = DATA_DIR / index_file
         if not index_path.exists():

@@ -1437,19 +1437,64 @@ def process_all(
                 # We can't easily call the command directly, so we'll use the processor
                 processor = GoogleDriveProcessor()
                 
-                def drive_progress(stats):
-                    if verbose:
-                        console.print(f"  📁 {stats.get('current_file', 'Processing...')}", style="dim")
-                
-                if not processor.authenticate(debug=verbose):
-                    console.print("❌ Failed to authenticate with Google Drive", style="red")
-                    raise typer.Exit(1)
-                
-                success = processor.process_drive(
-                    GOOGLE_DRIVE_INDEX_FILE,
-                    progress_callback=drive_progress,
-                    limit=limit
-                )
+                # Enhanced progress tracking with progress bar
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(bar_width=None),
+                    TaskProgressColumn(),
+                    TextColumn("[bold blue]{task.fields[files]} files"),
+                    TextColumn("[bold green]{task.fields[folders]} folders"),
+                    console=console,
+                    transient=False,
+                ) as drive_progress_bar:
+                    
+                    drive_task = drive_progress_bar.add_task(
+                        "🔐 Authenticating with Google Drive...",
+                        total=100,
+                        files=0,
+                        folders=0,
+                    )
+                    
+                    def auth_progress_callback(message: str):
+                        drive_progress_bar.update(drive_task, description=message)
+                        if verbose:
+                            console.print(f"  {message}", style="dim")
+                    
+                    if not processor.authenticate(progress_callback=auth_progress_callback, debug=verbose):
+                        console.print("❌ Failed to authenticate with Google Drive", style="red")
+                        raise typer.Exit(1)
+                    
+                    drive_progress_bar.update(drive_task, advance=100, description="✅ Authenticated successfully")
+                    
+                    # Update task for indexing
+                    drive_progress_bar.update(drive_task, description="📁 Scanning Drive structure...", completed=0, total=None)
+                    
+                    def drive_progress(stats):
+                        current_file = stats.get('current_file', '')
+                        if verbose and current_file:
+                            description = f"📄 Processing: {current_file}"
+                        else:
+                            description = f"📁 Scanning files... ({stats['total_files']} processed)"
+                        
+                        drive_progress_bar.update(
+                            drive_task,
+                            description=description,
+                            files=stats['total_files'],
+                            folders=stats['folders'],
+                        )
+                        
+                        if verbose and current_file:
+                            console.print(f"  📄 {current_file}", style="dim")
+                    
+                    success = processor.process_drive(
+                        GOOGLE_DRIVE_INDEX_FILE,
+                        progress_callback=drive_progress,
+                        limit=limit
+                    )
+                    
+                    if success:
+                        drive_progress_bar.update(drive_task, description="✅ Google Drive indexing completed")
                 
                 if not success:
                     console.print("❌ Google Drive indexing failed", style="red")
@@ -1468,19 +1513,60 @@ def process_all(
             else:
                 processor = GoogleDriveProcessor()
                 
-                def pdf_progress(stats):
-                    if verbose:
-                        console.print(f"  📄 {stats.get('current_file', 'Processing...')}", style="dim")
+                # Ensure authentication for PDF extraction
+                if not processor.service:
+                    console.print("🔐 Re-authenticating for PDF extraction...", style="blue")
+                    if not processor.authenticate(debug=verbose):
+                        console.print("❌ Failed to authenticate with Google Drive for PDF extraction", style="red")
+                        raise typer.Exit(1)
                 
-                success = processor.process_pdf_extractions(
-                    progress_callback=pdf_progress,
-                    limit=limit
-                )
-                
-                if not success:
-                    console.print("⚠️  PDF extraction failed or no PDFs found", style="yellow")
-                else:
-                    console.print("✅ PDF text extraction completed", style="green")
+                # Enhanced progress tracking with progress bar
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(bar_width=None),
+                    TaskProgressColumn(),
+                    TextColumn("[bold blue]{task.fields[processed]} processed"),
+                    TextColumn("[bold red]{task.fields[errors]} errors"),
+                    console=console,
+                    transient=False,
+                ) as pdf_progress_bar:
+                    
+                    pdf_task = pdf_progress_bar.add_task(
+                        "📄 Extracting PDF text...",
+                        total=None,
+                        processed=0,
+                        errors=0,
+                    )
+                    
+                    def pdf_progress(stats):
+                        current_file = stats.get('current_file', '')
+                        if verbose and current_file:
+                            description = f"📄 Processing: {current_file}"
+                        else:
+                            description = f"📄 Extracting text... ({stats['processed']} processed)"
+                        
+                        pdf_progress_bar.update(
+                            pdf_task,
+                            description=description,
+                            total=stats.get('total', None),
+                            completed=stats['processed'],
+                            processed=stats['processed'],
+                            errors=stats['errors'],
+                        )
+                        
+                        if verbose and current_file:
+                            console.print(f"  📄 {current_file}", style="dim")
+                    
+                    success = processor.process_pdf_extractions(
+                        progress_callback=pdf_progress,
+                        limit=limit
+                    )
+                    
+                    if not success:
+                        console.print("⚠️  PDF extraction failed or no PDFs found", style="yellow")
+                    else:
+                        console.print("✅ PDF text extraction completed", style="green")
         
         # Stage 3: Phrasal Processing
         if not skip_phrases:
@@ -1493,14 +1579,48 @@ def process_all(
             else:
                 processor = GoogleDriveProcessor()
                 
-                def phrases_progress(stats):
-                    if verbose:
-                        console.print(f"  🔤 {stats.get('current_file', 'Processing...')}", style="dim")
-                
-                success = processor.process_phrases_from_all_content(
-                    progress_callback=phrases_progress,
-                    limit=limit
-                )
+                # Enhanced progress tracking with progress bar
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(bar_width=None),
+                    TaskProgressColumn(),
+                    TextColumn("[bold blue]{task.fields[processed]} processed"),
+                    TextColumn("[bold red]{task.fields[errors]} errors"),
+                    console=console,
+                    transient=False,
+                ) as phrases_progress_bar:
+                    
+                    phrases_task = phrases_progress_bar.add_task(
+                        "🔤 Processing phrases...",
+                        total=None,
+                        processed=0,
+                        errors=0,
+                    )
+                    
+                    def phrases_progress(stats):
+                        current_file = stats.get('current_file', '')
+                        if verbose and current_file:
+                            description = f"🔤 Processing: {current_file}"
+                        else:
+                            description = f"🔤 Creating phrases... ({stats['processed']} processed)"
+                        
+                        phrases_progress_bar.update(
+                            phrases_task,
+                            description=description,
+                            total=stats.get('total', None),
+                            completed=stats['processed'],
+                            processed=stats['processed'],
+                            errors=stats['errors'],
+                        )
+                        
+                        if verbose and current_file:
+                            console.print(f"  🔤 {current_file}", style="dim")
+                    
+                    success = processor.process_phrases_from_all_content(
+                        progress_callback=phrases_progress,
+                        limit=limit
+                    )
                 
                 if not success:
                     console.print("❌ Phrasal processing failed", style="red")
@@ -1519,10 +1639,6 @@ def process_all(
             else:
                 processor = GoogleDriveProcessor()
                 
-                def summaries_progress(stats):
-                    if verbose:
-                        console.print(f"  📝 {stats.get('current_file', 'Processing...')}", style="dim")
-                
                 # Get API token
                 api_token = os.getenv("BOOKWYRM_API_KEY")
                 if not api_token:
@@ -1530,12 +1646,50 @@ def process_all(
                     console.print("Please set your BookWyrm API key to continue", style="yellow")
                     raise typer.Exit(1)
                 
-                success = processor.process_summaries_via_endpoint(
-                    progress_callback=summaries_progress,
-                    limit=limit,
-                    max_tokens=max_tokens,
-                    api_token=api_token
-                )
+                # Enhanced progress tracking with progress bar
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(bar_width=None),
+                    TaskProgressColumn(),
+                    TextColumn("[bold blue]{task.fields[processed]} processed"),
+                    TextColumn("[bold red]{task.fields[errors]} errors"),
+                    console=console,
+                    transient=False,
+                ) as summaries_progress_bar:
+                    
+                    summaries_task = summaries_progress_bar.add_task(
+                        "📝 Creating summaries...",
+                        total=None,
+                        processed=0,
+                        errors=0,
+                    )
+                    
+                    def summaries_progress(stats):
+                        current_file = stats.get('current_file', '')
+                        if verbose and current_file:
+                            description = f"📝 Processing: {current_file}"
+                        else:
+                            description = f"📝 Creating summaries... ({stats['processed']} processed)"
+                        
+                        summaries_progress_bar.update(
+                            summaries_task,
+                            description=description,
+                            total=stats.get('total', None),
+                            completed=stats['processed'],
+                            processed=stats['processed'],
+                            errors=stats['errors'],
+                        )
+                        
+                        if verbose and current_file:
+                            console.print(f"  📝 {current_file}", style="dim")
+                    
+                    success = processor.process_summaries_via_endpoint(
+                        progress_callback=summaries_progress,
+                        limit=limit,
+                        max_tokens=max_tokens,
+                        api_token=api_token
+                    )
                 
                 if not success:
                     console.print("❌ Summary creation failed", style="red")
@@ -1554,14 +1708,48 @@ def process_all(
             else:
                 processor = GoogleDriveProcessor()
                 
-                def title_cards_progress(stats):
-                    if verbose:
-                        console.print(f"  🎴 {stats.get('current_file', 'Processing...')}", style="dim")
-                
-                success = processor.create_title_cards(
-                    progress_callback=title_cards_progress,
-                    limit=limit
-                )
+                # Enhanced progress tracking with progress bar
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(bar_width=None),
+                    TaskProgressColumn(),
+                    TextColumn("[bold blue]{task.fields[processed]} processed"),
+                    TextColumn("[bold red]{task.fields[errors]} errors"),
+                    console=console,
+                    transient=False,
+                ) as title_cards_progress_bar:
+                    
+                    title_cards_task = title_cards_progress_bar.add_task(
+                        "🎴 Creating title cards...",
+                        total=None,
+                        processed=0,
+                        errors=0,
+                    )
+                    
+                    def title_cards_progress(stats):
+                        current_file = stats.get('current_file', '')
+                        if verbose and current_file:
+                            description = f"🎴 Processing: {current_file}"
+                        else:
+                            description = f"🎴 Creating title cards... ({stats['processed']} processed)"
+                        
+                        title_cards_progress_bar.update(
+                            title_cards_task,
+                            description=description,
+                            total=stats.get('total', None),
+                            completed=stats['processed'],
+                            processed=stats['processed'],
+                            errors=stats['errors'],
+                        )
+                        
+                        if verbose and current_file:
+                            console.print(f"  🎴 {current_file}", style="dim")
+                    
+                    success = processor.create_title_cards(
+                        progress_callback=title_cards_progress,
+                        limit=limit
+                    )
                 
                 if not success:
                     console.print("❌ Title card creation failed", style="red")
@@ -1586,15 +1774,49 @@ def process_all(
                 console.print("Please set OPENAI_API_KEY environment variable", style="yellow")
                 raise typer.Exit(1)
             
-            def indexing_progress(stats):
-                if verbose:
-                    console.print(f"  🔍 {stats.get('current_file', 'Processing...')}", style="dim")
-            
-            success = processor.index_title_cards_in_lancedb(
-                progress_callback=indexing_progress,
-                limit=limit,
-                batch_size=batch_size
-            )
+            # Enhanced progress tracking with progress bar
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(bar_width=None),
+                TaskProgressColumn(),
+                TextColumn("[bold blue]{task.fields[processed]} processed"),
+                TextColumn("[bold red]{task.fields[errors]} errors"),
+                console=console,
+                transient=False,
+            ) as indexing_progress_bar:
+                
+                indexing_task = indexing_progress_bar.add_task(
+                    "🔍 Indexing title cards...",
+                    total=None,
+                    processed=0,
+                    errors=0,
+                )
+                
+                def indexing_progress(stats):
+                    current_file = stats.get('current_file', '')
+                    if verbose and current_file:
+                        description = f"🔍 Processing: {current_file}"
+                    else:
+                        description = f"🔍 Indexing title cards... ({stats['processed']} processed)"
+                    
+                    indexing_progress_bar.update(
+                        indexing_task,
+                        description=description,
+                        total=stats.get('total', None),
+                        completed=stats['processed'],
+                        processed=stats['processed'],
+                        errors=stats['errors'],
+                    )
+                    
+                    if verbose and current_file:
+                        console.print(f"  🔍 {current_file}", style="dim")
+                
+                success = processor.index_title_cards_in_lancedb(
+                    progress_callback=indexing_progress,
+                    limit=limit,
+                    batch_size=batch_size
+                )
             
             if not success:
                 console.print("❌ LanceDB indexing failed", style="red")
