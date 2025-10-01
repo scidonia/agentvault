@@ -61,6 +61,7 @@ class TitleCardQueryAgent:
 
     def search_title_cards_node(self, state: QueryState) -> QueryState:
         """Node 1: Search for relevant title cards using vector similarity."""
+        print("🔍 [Stage 1/3] Searching for relevant documents...")
         logger.info(f"Searching title cards for: {state['user_question']}")
 
         try:
@@ -72,12 +73,15 @@ class TitleCardQueryAgent:
                 state["error"] = "OpenAI client not available for embeddings"
                 return state
 
+            print("  🧠 Thinking... Converting your question into a searchable format")
             # Generate embedding for the user question
             question_embedding = self.openai_client.get_embedding(state["user_question"])
-
+            
+            print("  🔎 Thinking... Searching through document database")
             # Search LanceDB for similar title cards
             table = self.lancedb_client.open_table(TITLES_TABLE)
             
+            print("  📊 Thinking... Analyzing similarity scores")
             # Perform vector search with top-k=15
             search_results = (
                 table.search(question_embedding)
@@ -86,11 +90,13 @@ class TitleCardQueryAgent:
             )
 
             if search_results.empty:
+                print("  ⚠️  No relevant documents found")
                 logger.warning("No title cards found in search")
                 state["search_results"] = []
                 state["search_threshold"] = 0.0
                 return state
 
+            print("  📈 Thinking... Ranking documents by relevance")
             # Convert to list of dictionaries and add similarity scores
             results = []
             similarities = []
@@ -122,17 +128,20 @@ class TitleCardQueryAgent:
             state["search_results"] = results
             state["search_threshold"] = threshold
 
+            print(f"  ✅ Found {len(results)} relevant documents (relevance threshold: {threshold:.4f})")
             logger.info(f"Found {len(results)} title cards, threshold: {threshold:.4f}")
             
             return state
 
         except Exception as e:
+            print(f"  ❌ Search failed: {str(e)}")
             logger.error(f"Error in search_title_cards_node: {e}")
             state["error"] = f"Search error: {str(e)}"
             return state
 
     def gather_phrases_node(self, state: QueryState) -> QueryState:
         """Node 2: Gather phrasal information for the relevant title cards."""
+        print("\n📚 [Stage 2/3] Gathering detailed content from relevant documents...")
         logger.info("Gathering phrases for relevant title cards")
 
         try:
@@ -140,19 +149,24 @@ class TitleCardQueryAgent:
                 return state
 
             if not state["search_results"]:
+                print("  ⚠️  No search results to process")
                 logger.warning("No search results to gather phrases for")
                 state["relevant_phrases"] = []
                 return state
 
+            print("  🔍 Thinking... Looking for detailed phrase data")
             # Load phrases data
             phrases_file = DATA_DIR / "content_phrases.parquet"
             if not phrases_file.exists():
+                print("  ⚠️  No phrase data available, using document summaries instead")
                 logger.warning("Phrases file not found, using summaries from title cards")
                 state["relevant_phrases"] = []
                 return state
 
+            print("  📖 Thinking... Loading phrase database")
             df_phrases = pd.read_parquet(phrases_file)
             
+            print("  🎯 Thinking... Filtering phrases for relevant documents")
             # Get file hashes from search results
             relevant_file_hashes = [result["file_hash"] for result in state["search_results"]]
             
@@ -162,10 +176,12 @@ class TitleCardQueryAgent:
             ].copy()
 
             if relevant_phrases_df.empty:
+                print("  ⚠️  No phrases found for the relevant documents")
                 logger.warning("No phrases found for relevant title cards")
                 state["relevant_phrases"] = []
                 return state
 
+            print("  🔗 Thinking... Organizing phrases by document")
             # Convert to list of dictionaries and group by file
             phrases_by_file = {}
             for _, row in relevant_phrases_df.iterrows():
@@ -180,6 +196,7 @@ class TitleCardQueryAgent:
                     "phrase_count": row.get("phrase_count", 0)
                 })
 
+            print("  📝 Thinking... Selecting most relevant excerpts from each document")
             # Sort phrases within each file by phrase_count
             for file_hash in phrases_by_file:
                 phrases_by_file[file_hash].sort(key=lambda x: x["phrase_count"])
@@ -198,17 +215,20 @@ class TitleCardQueryAgent:
                     })
 
             state["relevant_phrases"] = relevant_phrases
+            print(f"  ✅ Gathered detailed content from {len(relevant_phrases)} documents")
             logger.info(f"Gathered phrases from {len(relevant_phrases)} files")
 
             return state
 
         except Exception as e:
+            print(f"  ❌ Content gathering failed: {str(e)}")
             logger.error(f"Error in gather_phrases_node: {e}")
             state["error"] = f"Phrase gathering error: {str(e)}"
             return state
 
     def generate_answer_node(self, state: QueryState) -> QueryState:
         """Node 3: Generate citations and answer based on the gathered information."""
+        print("\n🤖 [Stage 3/3] Generating comprehensive answer with citations...")
         logger.info("Generating answer with citations")
 
         try:
@@ -216,16 +236,20 @@ class TitleCardQueryAgent:
                 return state
 
             if not state["search_results"]:
+                print("  ⚠️  No relevant documents found to answer your question")
                 state["final_answer"] = "I couldn't find any relevant documents to answer your question."
                 state["citations"] = []
                 return state
 
+            print("  📋 Thinking... Preparing citations from top documents")
             # Create citations from search results and phrases
             citations = []
             context_parts = []
 
             for i, result in enumerate(state["search_results"][:5], 1):  # Use top 5 for answer
                 file_hash = result["file_hash"]
+                
+                print(f"    📄 Processing document {i}: '{result.get('title', 'Unknown')}'")
                 
                 # Find corresponding phrases
                 phrases_text = ""
@@ -283,11 +307,14 @@ class TitleCardQueryAgent:
 
             state["citations"] = citations
 
+            print("  🧠 Thinking... Analyzing document content and context")
             # Generate answer using OpenAI
             if not self.openai_client:
+                print("  ❌ AI assistant not available for answer generation")
                 state["final_answer"] = "OpenAI client not available for answer generation."
                 return state
 
+            print("  ✍️  Thinking... Crafting comprehensive answer with proper citations")
             context = "\n\n".join(context_parts)
             
             prompt = f"""Based on the following documents, please answer the user's question. Use the citation numbers [1], [2], etc. to reference specific documents in your answer.
@@ -309,6 +336,7 @@ Answer:"""
                 {"role": "user", "content": prompt}
             ]
 
+            print("  🤔 Thinking... Generating final response")
             response = self.openai_client.chat_completion(
                 messages=messages,
                 temperature=0.3,
@@ -326,10 +354,12 @@ Answer:"""
                 # Fallback - try to extract content
                 state["final_answer"] = str(response)
 
+            print("  ✅ Answer generated successfully with citations")
             logger.info("Generated answer with citations")
             return state
 
         except Exception as e:
+            print(f"  ❌ Answer generation failed: {str(e)}")
             logger.error(f"Error in generate_answer_node: {e}")
             state["error"] = f"Answer generation error: {str(e)}"
             state["final_answer"] = "I encountered an error while generating the answer."
@@ -452,7 +482,9 @@ def main():
             if not question:
                 continue
 
-            console.print("\n🔄 Processing your question...", style="yellow")
+            print("\n" + "="*60)
+            print("🚀 Starting query processing pipeline...")
+            print("="*60)
             
             # Process query
             response = agent.query(question)
