@@ -1900,16 +1900,20 @@ def query_agent(
             from rich.table import Table
             citations_table = Table(title="📚 Citations", show_header=True, header_style="bold magenta")
             citations_table.add_column("ID", style="cyan", width=4)
-            citations_table.add_column("Title", style="green", width=30)
-            citations_table.add_column("Author", style="yellow", width=20)
-            citations_table.add_column("Relevance", style="blue", width=10)
+            citations_table.add_column("Title", style="green", width=25)
+            citations_table.add_column("Author", style="yellow", width=15)
+            citations_table.add_column("Category", style="blue", width=12)
+            citations_table.add_column("Relevance", style="blue", width=8)
+            citations_table.add_column("Summary", style="dim", width=50)
             
             for citation in response["citations"]:
                 citations_table.add_row(
                     f"[{citation['id']}]",
-                    citation["title"][:30] + "..." if len(citation["title"]) > 30 else citation["title"],
-                    citation["author"][:20] + "..." if len(citation["author"]) > 20 else citation["author"],
+                    citation["title"][:25] + "..." if len(citation["title"]) > 25 else citation["title"],
+                    citation["author"][:15] + "..." if len(citation["author"]) > 15 else citation["author"],
+                    citation.get("category", "Unknown")[:12],
                     f"{citation['similarity_score']:.3f}",
+                    citation.get("summary", "")[:50] + "..." if len(citation.get("summary", "")) > 50 else citation.get("summary", "")
                 )
             
             console.print(citations_table)

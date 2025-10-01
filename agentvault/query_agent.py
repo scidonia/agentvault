@@ -242,19 +242,43 @@ class TitleCardQueryAgent:
                     # Fall back to the embedded text from title card
                     phrases_text = result["text"][:500]  # Limit length
 
+                # Get the full summary from the title card for context
+                title_card_summary = ""
+                # The "text" field in search results contains the combined title+author+summary
+                # We need to extract just the summary part, or use a reasonable portion
+                full_text = result.get("text", "")
+                if full_text:
+                    # Try to extract summary portion (everything after title and author)
+                    title = result.get("title", "")
+                    author = result.get("author", "")
+                    
+                    # Remove title and author from the beginning to get summary
+                    summary_start = full_text
+                    if title:
+                        summary_start = summary_start.replace(title, "", 1).strip()
+                    if author:
+                        summary_start = summary_start.replace(author, "", 1).strip()
+                    
+                    title_card_summary = summary_start[:800] if summary_start else full_text[:800]
+
                 citation = {
                     "id": i,
                     "title": result["title"],
                     "author": result["author"] or "Unknown",
                     "file_name": result["file_name"],
                     "similarity_score": result["similarity_score"],
-                    "excerpt": phrases_text[:300] + "..." if len(phrases_text) > 300 else phrases_text
+                    "excerpt": phrases_text[:300] + "..." if len(phrases_text) > 300 else phrases_text,
+                    "summary": title_card_summary,
+                    "category": result.get("category", "Unknown"),
+                    "subcategory": result.get("subcategory", "Unknown")
                 }
                 citations.append(citation)
 
-                # Add to context for answer generation
+                # Add to context for answer generation - include both summary and phrases
                 context_parts.append(
-                    f"[{i}] {result['title']} by {result['author'] or 'Unknown'}: {phrases_text}"
+                    f"[{i}] {result['title']} by {result['author'] or 'Unknown'}\n"
+                    f"Summary: {title_card_summary}\n"
+                    f"Relevant excerpts: {phrases_text}"
                 )
 
             state["citations"] = citations
@@ -444,22 +468,24 @@ def main():
             # Show answer
             console.print(Panel(response["answer"], title="🤖 Answer", border_style="green"))
             
-            # Show citations
+            # Show citations with summaries
             if response["citations"]:
                 citations_table = Table(title="📚 Citations", show_header=True, header_style="bold magenta")
                 citations_table.add_column("ID", style="cyan", width=4)
-                citations_table.add_column("Title", style="green", width=30)
-                citations_table.add_column("Author", style="yellow", width=20)
-                citations_table.add_column("Relevance", style="blue", width=10)
-                citations_table.add_column("Excerpt", style="dim", width=40)
+                citations_table.add_column("Title", style="green", width=25)
+                citations_table.add_column("Author", style="yellow", width=15)
+                citations_table.add_column("Category", style="blue", width=12)
+                citations_table.add_column("Relevance", style="blue", width=8)
+                citations_table.add_column("Summary", style="dim", width=50)
                 
                 for citation in response["citations"]:
                     citations_table.add_row(
                         f"[{citation['id']}]",
-                        citation["title"][:30] + "..." if len(citation["title"]) > 30 else citation["title"],
-                        citation["author"][:20] + "..." if len(citation["author"]) > 20 else citation["author"],
+                        citation["title"][:25] + "..." if len(citation["title"]) > 25 else citation["title"],
+                        citation["author"][:15] + "..." if len(citation["author"]) > 15 else citation["author"],
+                        citation.get("category", "Unknown")[:12],
                         f"{citation['similarity_score']:.3f}",
-                        citation["excerpt"][:40] + "..." if len(citation["excerpt"]) > 40 else citation["excerpt"]
+                        citation.get("summary", "")[:50] + "..." if len(citation.get("summary", "")) > 50 else citation.get("summary", "")
                     )
                 
                 console.print(citations_table)
