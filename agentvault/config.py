@@ -33,11 +33,9 @@ SUPPORTED_MIME_TYPES = [
 # BookWyrm API settings
 BOOKWYRM_API_URL = "https://api.bookwyrm.ai/classify"  # Placeholder
 
-# Pinecone configuration
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT", "us-east-1-aws")
-TITLES_DENSE_INDEX = "titles-dense"
-TITLES_SPARSE_INDEX = "titles-sparse"
+# LanceDB configuration
+LANCEDB_URI = os.getenv("LANCEDB_URI", str(DATA_DIR / "lancedb"))
+TITLES_TABLE = "title_cards"
 EMBEDDING_DIMENSION = 384  # For sentence-transformers/all-MiniLM-L6-v2
 
 # Create directories

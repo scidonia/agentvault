@@ -47,25 +47,23 @@ except ImportError as e:
     print("Try: pip install bookwyrm-client")
     raise
 
-# Import Pinecone library
+# Import LanceDB and embedding libraries
 try:
-    from pinecone import Pinecone, CloudProvider, ServerlessSpec
-    HAS_PINECONE_SUPPORT = True
+    import lancedb
+    from sentence_transformers import SentenceTransformer
+    HAS_LANCEDB_SUPPORT = True
 except ImportError as e:
-    print(f"⚠️  Pinecone indexing not available: {e}")
-    print("To enable Pinecone indexing, install: uv add pinecone")
-    HAS_PINECONE_SUPPORT = False
-    Pinecone = None
-    CloudProvider = None
-    ServerlessSpec = None
+    print(f"⚠️  LanceDB indexing not available: {e}")
+    print("To enable LanceDB indexing, install: uv add lancedb sentence-transformers")
+    HAS_LANCEDB_SUPPORT = False
+    lancedb = None
+    SentenceTransformer = None
 
 from .config import (
     DATA_DIR, 
     EMBEDDING_MODEL, 
-    PINECONE_API_KEY, 
-    PINECONE_ENVIRONMENT,
-    TITLES_DENSE_INDEX,
-    TITLES_SPARSE_INDEX,
+    LANCEDB_URI,
+    TITLES_TABLE,
     EMBEDDING_DIMENSION
 )
 
@@ -82,9 +80,10 @@ class GoogleDriveProcessor:
         self.service = None
         self.credentials = None
         self.bookwyrm_client = None
-        self.pinecone_client = None
+        self.lancedb_client = None
+        self.embedding_model = None
         self._init_bookwyrm_client()
-        self._init_pinecone_client()
+        self._init_lancedb_client()
     
     def _init_bookwyrm_client(self):
         """Initialize BookWyrm client for classification."""
@@ -1656,83 +1655,91 @@ class GoogleDriveProcessor:
             logger.error(f"Error creating title cards: {e}")
             return False
 
-    def _init_pinecone_client(self):
-        """Initialize Pinecone client."""
-        if not HAS_PINECONE_SUPPORT:
-            logger.warning("Pinecone support not available - indexing will be skipped")
-            return
-            
-        if not PINECONE_API_KEY:
-            logger.warning("No PINECONE_API_KEY found - indexing will be skipped")
+    def _init_lancedb_client(self):
+        """Initialize LanceDB client and embedding model."""
+        if not HAS_LANCEDB_SUPPORT:
+            logger.warning("LanceDB support not available - indexing will be skipped")
             return
             
         try:
-            # Initialize Pinecone
-            self.pinecone_client = Pinecone(api_key=PINECONE_API_KEY)
-            logger.info("Pinecone client initialized successfully")
+            # Initialize LanceDB
+            self.lancedb_client = lancedb.connect(LANCEDB_URI)
+            
+            # Initialize embedding model
+            self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+            
+            logger.info("LanceDB client and embedding model initialized successfully")
             
         except Exception as e:
-            logger.warning(f"Failed to initialize Pinecone client: {e}")
-            self.pinecone_client = None
+            logger.warning(f"Failed to initialize LanceDB client: {e}")
+            self.lancedb_client = None
+            self.embedding_model = None
 
-    def _ensure_pinecone_indexes(self):
-        """Ensure Pinecone indexes exist, create them if they don't."""
-        if not self.pinecone_client:
+    def _ensure_lancedb_table(self):
+        """Ensure LanceDB table exists, create it if it doesn't."""
+        if not self.lancedb_client:
             return False
             
         try:
-            existing_indexes = [index.name for index in self.pinecone_client.list_indexes()]
+            # Check if table exists
+            existing_tables = self.lancedb_client.table_names()
             
-            # Create dense index with integrated embedding if it doesn't exist
-            if TITLES_DENSE_INDEX not in existing_indexes:
-                logger.info(f"Creating dense index with integrated embedding: {TITLES_DENSE_INDEX}")
+            if TITLES_TABLE not in existing_tables:
+                logger.info(f"Creating LanceDB table: {TITLES_TABLE}")
                 
-                self.pinecone_client.create_index_for_model(
-                    name=TITLES_DENSE_INDEX,
-                    cloud=CloudProvider.AWS,
-                    region="us-east-1",
-                    embed={
-                        "model": "llama-text-embed-v2",
-                        "field_map": {"text": "text"}
-                    }
-                )
-            
-            # Create sparse index with integrated embedding if it doesn't exist
-            if TITLES_SPARSE_INDEX not in existing_indexes:
-                logger.info(f"Creating sparse index with integrated embedding: {TITLES_SPARSE_INDEX}")
+                # Create a sample record to define schema
+                sample_data = [{
+                    'id': 'sample',
+                    'text': 'sample text',
+                    'vector': [0.0] * EMBEDDING_DIMENSION,
+                    'file_hash': 'sample',
+                    'title': 'sample',
+                    'author': 'sample',
+                    'file_name': 'sample',
+                    'category': 'sample',
+                    'subcategory': 'sample',
+                    'language': 'sample',
+                    'mime_type': 'sample',
+                    'content_source': 'sample',
+                    'summary_length': 0,
+                    'phrase_count': 0,
+                    'file_size': 0,
+                    'path': 'sample',
+                    'web_view_link': 'sample',
+                    'title_extracted_from': 'sample',
+                    'classification_confidence': 0.0,
+                    'type': 'title_card'
+                }]
                 
-                self.pinecone_client.create_index_for_model(
-                    name=TITLES_SPARSE_INDEX,
-                    cloud=CloudProvider.AWS,
-                    region="us-east-1",
-                    embed={
-                        "model": "pinecone-sparse-english-v0",
-                        "field_map": {"text": "text"}
-                    }
-                )
+                # Create table with sample data
+                table = self.lancedb_client.create_table(TITLES_TABLE, sample_data)
+                
+                # Delete the sample record
+                table.delete("id = 'sample'")
+                
+                logger.info(f"Created LanceDB table: {TITLES_TABLE}")
             
             return True
             
         except Exception as e:
-            logger.error(f"Error ensuring Pinecone indexes: {e}")
+            logger.error(f"Error ensuring LanceDB table: {e}")
             return False
 
-
-    def index_title_cards_in_pinecone(
+    def index_title_cards_in_lancedb(
         self,
         title_cards_file: str = "title_cards.parquet",
         progress_callback=None,
         limit: Optional[int] = None,
         batch_size: int = 100
     ) -> bool:
-        """Index title cards in Pinecone using integrated embedding."""
+        """Index title cards in LanceDB with vector embeddings."""
         
-        if not HAS_PINECONE_SUPPORT:
-            logger.error("Pinecone support not available")
+        if not HAS_LANCEDB_SUPPORT:
+            logger.error("LanceDB support not available")
             return False
             
-        if not self.pinecone_client:
-            logger.error("Pinecone client not initialized")
+        if not self.lancedb_client or not self.embedding_model:
+            logger.error("LanceDB client or embedding model not initialized")
             return False
             
         title_cards_path = DATA_DIR / title_cards_file
@@ -1741,9 +1748,9 @@ class GoogleDriveProcessor:
             return False
             
         try:
-            # Ensure indexes exist
-            if not self._ensure_pinecone_indexes():
-                logger.error("Failed to ensure Pinecone indexes exist")
+            # Ensure table exists
+            if not self._ensure_lancedb_table():
+                logger.error("Failed to ensure LanceDB table exists")
                 return False
             
             # Load title cards
@@ -1760,9 +1767,8 @@ class GoogleDriveProcessor:
                 df_title_cards = df_title_cards.head(limit)
                 logger.info(f"Processing limited to {len(df_title_cards)} title cards")
             
-            # Get Pinecone index connections
-            dense_index = self.pinecone_client.Index(TITLES_DENSE_INDEX)
-            sparse_index = self.pinecone_client.Index(TITLES_SPARSE_INDEX)
+            # Get LanceDB table
+            table = self.lancedb_client.open_table(TITLES_TABLE)
             
             # Process title cards in batches
             processed_count = 0
@@ -1770,8 +1776,7 @@ class GoogleDriveProcessor:
             
             for i in range(0, len(df_title_cards), batch_size):
                 batch = df_title_cards.iloc[i:i + batch_size]
-                batch_dense = []
-                batch_sparse = []
+                batch_records = []
                 
                 for _, row in batch.iterrows():
                     file_hash = row['file_hash']
@@ -1802,31 +1807,14 @@ class GoogleDriveProcessor:
                             error_count += 1
                             continue
                         
-                        # Prepare metadata
-                        metadata = {
-                            'file_hash': file_hash,
-                            'title': row.get('title', ''),
-                            'author': row.get('author', ''),
-                            'file_name': row.get('file_name', ''),
-                            'category': row.get('category', ''),
-                            'subcategory': row.get('subcategory', ''),
-                            'language': row.get('language', ''),
-                            'mime_type': row.get('mime_type', ''),
-                            'content_source': row.get('content_source', ''),
-                            'summary_length': int(row.get('summary_length', 0)),
-                            'phrase_count': int(row.get('phrase_count', 0)),
-                            'file_size': int(row.get('file_size', 0)),
-                            'path': row.get('path', ''),
-                            'web_view_link': row.get('web_view_link', ''),
-                            'title_extracted_from': row.get('title_extracted_from', ''),
-                            'classification_confidence': float(row.get('classification_confidence', 0.0))
-                        }
+                        # Generate embedding
+                        embedding = self.embedding_model.encode(combined_text)
                         
-                        # Create records for both indexes using Pinecone's integrated embedding (api-rag style)
-                        # Dense index record - flat structure like api-rag
-                        dense_record = {
+                        # Create record for LanceDB
+                        record = {
                             'id': file_hash,
                             'text': combined_text,
+                            'vector': embedding.tolist(),
                             'file_hash': file_hash,
                             'title': row.get('title', ''),
                             'author': row.get('author', ''),
@@ -1845,31 +1833,7 @@ class GoogleDriveProcessor:
                             'classification_confidence': float(row.get('classification_confidence', 0.0)),
                             'type': 'title_card'
                         }
-                        batch_dense.append(dense_record)
-                        
-                        # Sparse index record - flat structure like api-rag
-                        sparse_record = {
-                            'id': file_hash,
-                            'text': combined_text,
-                            'file_hash': file_hash,
-                            'title': row.get('title', ''),
-                            'author': row.get('author', ''),
-                            'file_name': row.get('file_name', ''),
-                            'category': row.get('category', ''),
-                            'subcategory': row.get('subcategory', ''),
-                            'language': row.get('language', ''),
-                            'mime_type': row.get('mime_type', ''),
-                            'content_source': row.get('content_source', ''),
-                            'summary_length': int(row.get('summary_length', 0)),
-                            'phrase_count': int(row.get('phrase_count', 0)),
-                            'file_size': int(row.get('file_size', 0)),
-                            'path': row.get('path', ''),
-                            'web_view_link': row.get('web_view_link', ''),
-                            'title_extracted_from': row.get('title_extracted_from', ''),
-                            'classification_confidence': float(row.get('classification_confidence', 0.0)),
-                            'type': 'title_card'
-                        }
-                        batch_sparse.append(sparse_record)
+                        batch_records.append(record)
                         
                         processed_count += 1
                         
@@ -1877,19 +1841,15 @@ class GoogleDriveProcessor:
                         error_count += 1
                         logger.error(f"Error processing title card {file_hash}: {e}")
                 
-                # Upsert batches to Pinecone with integrated embedding
+                # Add batch to LanceDB
                 try:
-                    if batch_dense:
-                        dense_index.upsert(vectors=batch_dense)
-                        logger.info(f"Upserted {len(batch_dense)} records to dense index")
-                    
-                    if batch_sparse:
-                        sparse_index.upsert(vectors=batch_sparse)
-                        logger.info(f"Upserted {len(batch_sparse)} records to sparse index")
+                    if batch_records:
+                        table.add(batch_records)
+                        logger.info(f"Added {len(batch_records)} records to LanceDB")
                         
                 except Exception as e:
-                    logger.error(f"Error upserting batch to Pinecone: {e}")
-                    error_count += len(batch)
+                    logger.error(f"Error adding batch to LanceDB: {e}")
+                    error_count += len(batch_records)
             
             # Final progress update
             if progress_callback:
@@ -1905,35 +1865,26 @@ class GoogleDriveProcessor:
             return error_count == 0
             
         except Exception as e:
-            logger.error(f"Error indexing title cards in Pinecone: {e}")
+            logger.error(f"Error indexing title cards in LanceDB: {e}")
             return False
 
-    def clear_pinecone_indexes(self) -> bool:
-        """Clear and recreate Pinecone indexes."""
-        if not self.pinecone_client:
-            logger.error("Pinecone client not initialized")
+    def clear_lancedb_table(self) -> bool:
+        """Clear and recreate LanceDB table."""
+        if not self.lancedb_client:
+            logger.error("LanceDB client not initialized")
             return False
             
         try:
-            existing_indexes = [index.name for index in self.pinecone_client.list_indexes()]
+            # Drop existing table if it exists
+            existing_tables = self.lancedb_client.table_names()
+            if TITLES_TABLE in existing_tables:
+                logger.info(f"Dropping existing table: {TITLES_TABLE}")
+                self.lancedb_client.drop_table(TITLES_TABLE)
             
-            # Delete existing indexes
-            if TITLES_DENSE_INDEX in existing_indexes:
-                logger.info(f"Deleting dense index: {TITLES_DENSE_INDEX}")
-                self.pinecone_client.delete_index(TITLES_DENSE_INDEX)
-            
-            if TITLES_SPARSE_INDEX in existing_indexes:
-                logger.info(f"Deleting sparse index: {TITLES_SPARSE_INDEX}")
-                self.pinecone_client.delete_index(TITLES_SPARSE_INDEX)
-            
-            # Wait a moment for deletion to complete
-            import time
-            time.sleep(5)
-            
-            # Recreate indexes
-            logger.info("Recreating indexes with correct field mapping...")
-            return self._ensure_pinecone_indexes()
+            # Recreate table
+            logger.info("Recreating LanceDB table...")
+            return self._ensure_lancedb_table()
             
         except Exception as e:
-            logger.error(f"Error clearing Pinecone indexes: {e}")
+            logger.error(f"Error clearing LanceDB table: {e}")
             return False

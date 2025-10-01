@@ -1050,7 +1050,7 @@ def index_titles(
         None, "--limit", "-n", help="Limit number of title cards to index"
     ),
     batch_size: int = typer.Option(
-        100, "--batch-size", "-b", help="Batch size for Pinecone upserts"
+        100, "--batch-size", "-b", help="Batch size for LanceDB inserts"
     ),
     force: bool = typer.Option(
         False, "--force", "-f", help="Force re-indexing even if vectors exist"
@@ -1059,7 +1059,7 @@ def index_titles(
         False, "--verbose", "-v", help="Show detailed progress information"
     ),
 ):
-    """Index title cards in Pinecone for dense and sparse search."""
+    """Index title cards in LanceDB for vector search."""
     
     title_cards_path = DATA_DIR / title_cards_file
     
@@ -1069,33 +1069,19 @@ def index_titles(
         console.print("  [bold]agentvault create-title-cards[/bold]")
         raise typer.Exit(1)
     
-    # Check for Pinecone API key
-    pinecone_api_key = os.getenv("PINECONE_API_KEY")
-    if not pinecone_api_key:
-        console.print("❌ PINECONE_API_KEY environment variable not found", style="red")
-        console.print("\n📋 [bold]Setup Instructions:[/bold]", style="yellow")
-        console.print("1. Get an API key from https://pinecone.io", style="yellow")
-        console.print("2. Set environment variable:", style="yellow")
-        console.print("   [cyan]export PINECONE_API_KEY='your-api-key-here'[/cyan]", style="yellow")
-        console.print("3. Optionally set environment:", style="yellow")
-        console.print("   [cyan]export PINECONE_ENVIRONMENT='europe-west4-gcp'[/cyan]", style="yellow")
-        console.print("4. Run the command again", style="yellow")
-        raise typer.Exit(1)
-    
-    # Check for Pinecone support
+    # Check for LanceDB support
     processor = GoogleDriveProcessor()
     
-    if not processor.pinecone_client:
-        console.print("❌ Pinecone client not available", style="red")
+    if not processor.lancedb_client or not processor.embedding_model:
+        console.print("❌ LanceDB client not available", style="red")
         console.print("\n📋 [bold]Installation Instructions:[/bold]", style="yellow")
-        console.print("1. Install Pinecone dependencies:", style="yellow")
-        console.print("   [cyan]uv add pinecone[/cyan]", style="yellow")
+        console.print("1. Install LanceDB dependencies:", style="yellow")
+        console.print("   [cyan]uv add lancedb sentence-transformers[/cyan]", style="yellow")
         console.print("2. Run the command again", style="yellow")
         raise typer.Exit(1)
     
-    console.print(Panel.fit("🔍 Starting Title Card Indexing in Pinecone", style="bold blue"))
-    console.print(f"📊 Dense index: [cyan]titles-dense[/cyan]", style="dim")
-    console.print(f"📊 Sparse index: [cyan]titles-sparse[/cyan]", style="dim")
+    console.print(Panel.fit("🔍 Starting Title Card Indexing in LanceDB", style="bold blue"))
+    console.print(f"📊 Table: [cyan]{processor.lancedb_client.table_names() if processor.lancedb_client else 'title_cards'}[/cyan]", style="dim")
     
     with Progress(
         SpinnerColumn(),
@@ -1138,7 +1124,7 @@ def index_titles(
                 if verbose and current_file and phase != 'completed':
                     console.print(f"  🔍 {current_file}", style="dim")
             
-            success = processor.index_title_cards_in_pinecone(
+            success = processor.index_title_cards_in_lancedb(
                 title_cards_file=title_cards_file,
                 progress_callback=update_progress,
                 limit=limit,
@@ -1159,7 +1145,7 @@ def index_titles(
             raise typer.Exit(1)
     
     console.print("✅ Title card indexing completed!", style="green bold")
-    console.print("🔍 Your title cards are now searchable in Pinecone!", style="green")
+    console.print("🔍 Your title cards are now searchable in LanceDB!", style="green")
 
 
 @app.command("clear-indexes")
@@ -1168,44 +1154,38 @@ def clear_indexes(
         False, "--confirm", help="Skip confirmation prompt"
     ),
 ):
-    """Clear and recreate Pinecone indexes."""
+    """Clear and recreate LanceDB table."""
     
     if not confirm:
         console.print("⚠️  This will permanently delete all indexed title cards!", style="red bold")
-        if not typer.confirm("Are you sure you want to clear the indexes?"):
+        if not typer.confirm("Are you sure you want to clear the table?"):
             console.print("❌ Operation cancelled", style="yellow")
             raise typer.Exit()
     
-    # Check for Pinecone API key
-    pinecone_api_key = os.getenv("PINECONE_API_KEY")
-    if not pinecone_api_key:
-        console.print("❌ PINECONE_API_KEY environment variable not found", style="red")
-        raise typer.Exit(1)
-    
-    # Check for Pinecone support
+    # Check for LanceDB support
     processor = GoogleDriveProcessor()
     
-    if not processor.pinecone_client:
-        console.print("❌ Pinecone client not available", style="red")
+    if not processor.lancedb_client:
+        console.print("❌ LanceDB client not available", style="red")
         console.print("\n📋 [bold]Installation Instructions:[/bold]", style="yellow")
-        console.print("1. Install Pinecone dependencies:", style="yellow")
-        console.print("   [cyan]uv add pinecone[/cyan]", style="yellow")
+        console.print("1. Install LanceDB dependencies:", style="yellow")
+        console.print("   [cyan]uv add lancedb sentence-transformers[/cyan]", style="yellow")
         raise typer.Exit(1)
     
-    console.print(Panel.fit("🗑️  Clearing Pinecone Indexes", style="bold red"))
+    console.print(Panel.fit("🗑️  Clearing LanceDB Table", style="bold red"))
     
     try:
-        success = processor.clear_pinecone_indexes()
+        success = processor.clear_lancedb_table()
         
         if success:
-            console.print("✅ Indexes cleared and recreated successfully!", style="green bold")
+            console.print("✅ Table cleared and recreated successfully!", style="green bold")
             console.print("💡 You can now run [bold]agentvault index-titles[/bold] to reindex your title cards", style="blue")
         else:
-            console.print("❌ Failed to clear indexes", style="red")
+            console.print("❌ Failed to clear table", style="red")
             raise typer.Exit(1)
             
     except Exception as e:
-        console.print(f"❌ Error clearing indexes: {e}", style="red")
+        console.print(f"❌ Error clearing table: {e}", style="red")
         raise typer.Exit(1)
 
 
