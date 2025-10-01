@@ -36,7 +36,12 @@ BOOKWYRM_API_URL = "https://api.bookwyrm.ai/classify"  # Placeholder
 # LanceDB configuration
 LANCEDB_URI = os.getenv("LANCEDB_URI", str(DATA_DIR / "lancedb"))
 TITLES_TABLE = "title_cards"
-EMBEDDING_DIMENSION = 384  # For sentence-transformers/all-MiniLM-L6-v2
+EMBEDDING_DIMENSION = 1536  # For OpenAI text-embedding-3-small
+
+# OpenAI configuration
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
+OPENAI_CHAT_MODEL = "gpt-4o-mini"
 
 # Create directories
 DATA_DIR.mkdir(exist_ok=True)

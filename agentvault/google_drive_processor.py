@@ -50,21 +50,28 @@ except ImportError as e:
 # Import LanceDB and embedding libraries
 try:
     import lancedb
-    from sentence_transformers import SentenceTransformer
     HAS_LANCEDB_SUPPORT = True
 except ImportError as e:
     print(f"⚠️  LanceDB indexing not available: {e}")
-    print("To enable LanceDB indexing, install: uv add lancedb sentence-transformers")
+    print("To enable LanceDB indexing, install: uv add lancedb")
     HAS_LANCEDB_SUPPORT = False
     lancedb = None
-    SentenceTransformer = None
+
+# Import OpenAI client
+try:
+    from .openai_client import OpenAIClient, HAS_OPENAI_SUPPORT
+except ImportError:
+    print("⚠️  OpenAI client not available")
+    HAS_OPENAI_SUPPORT = False
+    OpenAIClient = None
 
 from .config import (
     DATA_DIR, 
     EMBEDDING_MODEL, 
     LANCEDB_URI,
     TITLES_TABLE,
-    EMBEDDING_DIMENSION
+    EMBEDDING_DIMENSION,
+    OPENAI_API_KEY
 )
 
 # Google Drive API scopes
@@ -81,9 +88,10 @@ class GoogleDriveProcessor:
         self.credentials = None
         self.bookwyrm_client = None
         self.lancedb_client = None
-        self.embedding_model = None
+        self.openai_client = None
         self._init_bookwyrm_client()
         self._init_lancedb_client()
+        self._init_openai_client()
     
     def _init_bookwyrm_client(self):
         """Initialize BookWyrm client for classification."""
@@ -1656,7 +1664,7 @@ class GoogleDriveProcessor:
             return False
 
     def _init_lancedb_client(self):
-        """Initialize LanceDB client and embedding model."""
+        """Initialize LanceDB client."""
         if not HAS_LANCEDB_SUPPORT:
             logger.warning("LanceDB support not available - indexing will be skipped")
             return
@@ -1664,16 +1672,29 @@ class GoogleDriveProcessor:
         try:
             # Initialize LanceDB
             self.lancedb_client = lancedb.connect(LANCEDB_URI)
-            
-            # Initialize embedding model
-            self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
-            
-            logger.info("LanceDB client and embedding model initialized successfully")
+            logger.info("LanceDB client initialized successfully")
             
         except Exception as e:
             logger.warning(f"Failed to initialize LanceDB client: {e}")
             self.lancedb_client = None
-            self.embedding_model = None
+
+    def _init_openai_client(self):
+        """Initialize OpenAI client for embeddings."""
+        if not HAS_OPENAI_SUPPORT:
+            logger.warning("OpenAI support not available - will use fallback embedding")
+            return
+            
+        if not OPENAI_API_KEY:
+            logger.warning("No OPENAI_API_KEY found - will use fallback embedding")
+            return
+            
+        try:
+            self.openai_client = OpenAIClient()
+            logger.info("OpenAI client initialized successfully")
+            
+        except Exception as e:
+            logger.warning(f"Failed to initialize OpenAI client: {e}")
+            self.openai_client = None
 
     def _ensure_lancedb_table(self):
         """Ensure LanceDB table exists, create it if it doesn't."""
@@ -1738,8 +1759,12 @@ class GoogleDriveProcessor:
             logger.error("LanceDB support not available")
             return False
             
-        if not self.lancedb_client or not self.embedding_model:
-            logger.error("LanceDB client or embedding model not initialized")
+        if not self.lancedb_client:
+            logger.error("LanceDB client not initialized")
+            return False
+            
+        if not self.openai_client:
+            logger.error("OpenAI client not initialized - cannot generate embeddings")
             return False
             
         title_cards_path = DATA_DIR / title_cards_file
@@ -1807,14 +1832,14 @@ class GoogleDriveProcessor:
                             error_count += 1
                             continue
                         
-                        # Generate embedding
-                        embedding = self.embedding_model.encode(combined_text)
+                        # Generate embedding using OpenAI
+                        embedding = self.openai_client.get_embedding(combined_text)
                         
                         # Create record for LanceDB
                         record = {
                             'id': file_hash,
                             'text': combined_text,
-                            'vector': embedding.tolist(),
+                            'vector': embedding,
                             'file_hash': file_hash,
                             'title': row.get('title', ''),
                             'author': row.get('author', ''),

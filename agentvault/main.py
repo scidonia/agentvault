@@ -1069,15 +1069,25 @@ def index_titles(
         console.print("  [bold]agentvault create-title-cards[/bold]")
         raise typer.Exit(1)
     
-    # Check for LanceDB support
+    # Check for LanceDB and OpenAI support
     processor = GoogleDriveProcessor()
     
-    if not processor.lancedb_client or not processor.embedding_model:
+    if not processor.lancedb_client:
         console.print("❌ LanceDB client not available", style="red")
         console.print("\n📋 [bold]Installation Instructions:[/bold]", style="yellow")
         console.print("1. Install LanceDB dependencies:", style="yellow")
-        console.print("   [cyan]uv add lancedb sentence-transformers[/cyan]", style="yellow")
+        console.print("   [cyan]uv add lancedb[/cyan]", style="yellow")
         console.print("2. Run the command again", style="yellow")
+        raise typer.Exit(1)
+    
+    if not processor.openai_client:
+        console.print("❌ OpenAI client not available", style="red")
+        console.print("\n📋 [bold]Setup Instructions:[/bold]", style="yellow")
+        console.print("1. Install OpenAI dependencies:", style="yellow")
+        console.print("   [cyan]uv add openai[/cyan]", style="yellow")
+        console.print("2. Set your OpenAI API key:", style="yellow")
+        console.print("   [cyan]export OPENAI_API_KEY='your-api-key-here'[/cyan]", style="yellow")
+        console.print("3. Run the command again", style="yellow")
         raise typer.Exit(1)
     
     console.print(Panel.fit("🔍 Starting Title Card Indexing in LanceDB", style="bold blue"))
@@ -1169,7 +1179,9 @@ def clear_indexes(
         console.print("❌ LanceDB client not available", style="red")
         console.print("\n📋 [bold]Installation Instructions:[/bold]", style="yellow")
         console.print("1. Install LanceDB dependencies:", style="yellow")
-        console.print("   [cyan]uv add lancedb sentence-transformers[/cyan]", style="yellow")
+        console.print("   [cyan]uv add lancedb openai[/cyan]", style="yellow")
+        console.print("2. Set your OpenAI API key:", style="yellow")
+        console.print("   [cyan]export OPENAI_API_KEY='your-api-key-here'[/cyan]", style="yellow")
         raise typer.Exit(1)
     
     console.print(Panel.fit("🗑️  Clearing LanceDB Table", style="bold red"))
