@@ -291,7 +291,16 @@ Answer:"""
                 max_tokens=1000
             )
 
-            state["final_answer"] = response.choices[0].message.content
+            # Handle different response types from OpenAI client
+            if hasattr(response, 'choices'):
+                # Standard OpenAI API response object
+                state["final_answer"] = response.choices[0].message.content
+            elif isinstance(response, str):
+                # Direct string response
+                state["final_answer"] = response
+            else:
+                # Fallback - try to extract content
+                state["final_answer"] = str(response)
 
             logger.info("Generated answer with citations")
             return state
