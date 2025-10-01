@@ -357,15 +357,42 @@ Answer:"""
 def main():
     """Interactive CLI for the query agent."""
     import sys
+    import readline
+    import atexit
+    from pathlib import Path
     from rich.console import Console
     from rich.panel import Panel
     from rich.table import Table
-    from rich.prompt import Prompt
 
     console = Console()
     
+    # Set up history file
+    history_file = Path("data/query_history.txt")
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Load existing history
+    if history_file.exists():
+        try:
+            readline.read_history_file(str(history_file))
+            console.print(f"📚 Loaded {readline.get_current_history_length()} previous queries", style="dim")
+        except Exception as e:
+            console.print(f"⚠️  Could not load history: {e}", style="dim")
+    
+    # Set up history saving on exit
+    def save_history():
+        try:
+            readline.write_history_file(str(history_file))
+        except Exception as e:
+            console.print(f"⚠️  Could not save history: {e}", style="dim")
+    
+    atexit.register(save_history)
+    
+    # Configure readline
+    readline.set_history_length(1000)  # Keep last 1000 queries
+    
     console.print(Panel.fit("🤖 Title Card Query Agent", style="bold blue"))
-    console.print("Ask questions about your indexed documents. Type 'quit' to exit.\n")
+    console.print("Ask questions about your indexed documents. Type 'quit' to exit.")
+    console.print("💡 Use ↑/↓ arrow keys to navigate through previous questions.\n", style="dim")
 
     # Initialize agent
     try:
@@ -391,13 +418,14 @@ def main():
     # Interactive loop
     while True:
         try:
-            question = Prompt.ask("\n🔍 [bold blue]Your question[/bold blue]")
+            # Use input() instead of Prompt.ask() to get readline support
+            question = input("\n🔍 Your question: ").strip()
             
             if question.lower() in ['quit', 'exit', 'q']:
                 console.print("👋 Goodbye!", style="blue")
                 break
                 
-            if not question.strip():
+            if not question:
                 continue
 
             console.print("\n🔄 Processing your question...", style="yellow")
@@ -437,6 +465,9 @@ def main():
                 console.print(citations_table)
 
         except KeyboardInterrupt:
+            console.print("\n👋 Goodbye!", style="blue")
+            break
+        except EOFError:
             console.print("\n👋 Goodbye!", style="blue")
             break
         except Exception as e:
