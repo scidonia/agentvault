@@ -1821,9 +1821,13 @@ class GoogleDriveProcessor:
             
             # Connect to LanceDB (this will create the database if it doesn't exist)
             self.lancedb_client = lancedb.connect(str(db_path))
+            print(f"✅ LanceDB client initialized: {self.lancedb_client}")
+            print(f"✅ LanceDB client type: {type(self.lancedb_client)}")
+            print(f"✅ LanceDB client bool: {bool(self.lancedb_client)}")
             logger.info(f"LanceDB client initialized successfully at {db_path}")
 
         except Exception as e:
+            print(f"❌ LanceDB initialization exception: {e}")
             logger.error(f"Failed to initialize LanceDB client: {e}")
             self.lancedb_client = None
 
