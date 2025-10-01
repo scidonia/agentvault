@@ -23,7 +23,15 @@ import re
 
 from .google_drive_processor import GoogleDriveProcessor
 from .rag_agent import RAGAgent
-from .config import DATA_DIR, GOOGLE_DRIVE_INDEX_FILE
+from .config import (
+    DATA_DIR, 
+    GOOGLE_DRIVE_INDEX_FILE,
+    GOOGLE_DRIVE_INDEX_DIR,
+    PDF_EXTRACTIONS_DIR,
+    CONTENT_PHRASES_DIR,
+    CONTENT_SUMMARIES_DIR,
+    TITLE_CARDS_DIR,
+)
 
 app = typer.Typer(
     name="agentvault",
@@ -1416,9 +1424,9 @@ def process_all(
             current_stage += 1
             console.print(f"\n🔄 Stage {current_stage}/{total_stages}: Google Drive Indexing", style="bold cyan")
             
-            # Check if index exists and force flag
-            index_path = DATA_DIR / GOOGLE_DRIVE_INDEX_FILE
-            if not force and index_path.exists():
+            # Always run Google Drive indexing (it will skip duplicates automatically)
+            # Only skip if --force is not used and we want to completely skip this stage
+            if False:  # Never skip - always check for new files
                 console.print("✅ Google Drive index already exists (use --force to reindex)", style="green")
             else:
                 # Run drive indexing
@@ -1507,8 +1515,8 @@ def process_all(
             current_stage += 1
             console.print(f"\n🔄 Stage {current_stage}/{total_stages}: PDF Text Extraction", style="bold cyan")
             
-            pdf_path = DATA_DIR / "pdf_extractions.parquet"
-            if not force and pdf_path.exists():
+            # Always run PDF extraction (it will skip files already processed)
+            if False:  # Never skip - always check for new PDFs
                 console.print("✅ PDF extractions already exist (use --force to re-extract)", style="green")
             else:
                 processor = GoogleDriveProcessor()
@@ -1573,8 +1581,8 @@ def process_all(
             current_stage += 1
             console.print(f"\n🔄 Stage {current_stage}/{total_stages}: Phrasal Processing", style="bold cyan")
             
-            phrases_path = DATA_DIR / "content_phrases.parquet"
-            if not force and phrases_path.exists():
+            # Always run phrasal processing (it will skip files already processed)
+            if False:  # Never skip - always check for new content
                 console.print("✅ Phrases already exist (use --force to re-process)", style="green")
             else:
                 processor = GoogleDriveProcessor()
@@ -1633,8 +1641,8 @@ def process_all(
             current_stage += 1
             console.print(f"\n🔄 Stage {current_stage}/{total_stages}: Summary Creation", style="bold cyan")
             
-            summaries_path = DATA_DIR / "content_summaries.parquet"
-            if not force and summaries_path.exists():
+            # Always run summary creation (it will skip files already processed)
+            if False:  # Never skip - always check for new phrases
                 console.print("✅ Summaries already exist (use --force to re-create)", style="green")
             else:
                 processor = GoogleDriveProcessor()
@@ -1702,8 +1710,8 @@ def process_all(
             current_stage += 1
             console.print(f"\n🔄 Stage {current_stage}/{total_stages}: Title Card Creation", style="bold cyan")
             
-            title_cards_path = DATA_DIR / "title_cards.parquet"
-            if not force and title_cards_path.exists():
+            # Always run title card creation (it will skip files already processed)
+            if False:  # Never skip - always check for new summaries
                 console.print("✅ Title cards already exist (use --force to re-create)", style="green")
             else:
                 processor = GoogleDriveProcessor()
