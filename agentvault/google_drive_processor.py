@@ -645,6 +645,68 @@ class GoogleDriveProcessor:
             logger.error(f"Error creating summary: {error}")
             return {"error": str(error)}
 
+    def _load_existing_data_from_directory(self, data_dir: Path) -> tuple[set, list]:
+        """Load existing data from partitioned parquet directory."""
+        existing_hashes = set()
+        existing_data = []
+        
+        if not data_dir.exists():
+            return existing_hashes, existing_data
+            
+        try:
+            # Read all parquet files in the directory
+            parquet_files = list(data_dir.glob("*.parquet"))
+            if parquet_files:
+                dfs = []
+                for file in parquet_files:
+                    try:
+                        df = pd.read_parquet(file)
+                        dfs.append(df)
+                    except Exception as e:
+                        logger.warning(f"Could not load {file}: {e}")
+                
+                if dfs:
+                    combined_df = pd.concat(dfs, ignore_index=True)
+                    existing_hashes = set(combined_df.get("file_hash", []))
+                    existing_data = combined_df.to_dict("records")
+                    logger.info(f"Loaded {len(existing_data)} existing records from {len(parquet_files)} files")
+        except Exception as e:
+            logger.warning(f"Could not load existing data from {data_dir}: {e}")
+            
+        return existing_hashes, existing_data
+
+    def _save_batch_to_directory(self, data: list, data_dir: Path, batch_prefix: str = "batch") -> bool:
+        """Save a batch of data to a partitioned directory."""
+        if not data:
+            return True
+            
+        try:
+            # Ensure directory exists
+            data_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Find next batch number
+            existing_files = list(data_dir.glob(f"{batch_prefix}_*.parquet"))
+            batch_numbers = []
+            for file in existing_files:
+                try:
+                    num = int(file.stem.split('_')[-1])
+                    batch_numbers.append(num)
+                except ValueError:
+                    continue
+            
+            next_batch = max(batch_numbers, default=0) + 1
+            batch_file = data_dir / f"{batch_prefix}_{next_batch:04d}.parquet"
+            
+            # Save batch
+            df = pd.DataFrame(data)
+            df.to_parquet(batch_file, index=False)
+            logger.info(f"Saved {len(data)} records to {batch_file}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error saving batch to {data_dir}: {e}")
+            return False
+
     def _calculate_file_hash(self, file_info: Dict[str, Any]) -> str:
         """Calculate a hash for the file based on its metadata."""
         # Use file ID, name, size, and modified time to create a unique hash
