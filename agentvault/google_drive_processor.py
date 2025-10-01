@@ -1821,12 +1821,10 @@ class GoogleDriveProcessor:
             
             # Connect to LanceDB (this will create the database if it doesn't exist)
             self.lancedb_client = lancedb.connect(str(db_path))
-            print(f"✅ LanceDB client initialized successfully at {db_path}")
+            logger.info(f"LanceDB client initialized successfully at {db_path}")
 
         except Exception as e:
-            print(f"❌ Failed to initialize LanceDB client: {e}")
-            import traceback
-            print(f"Full traceback:\n{traceback.format_exc()}")
+            logger.error(f"Failed to initialize LanceDB client: {e}")
             self.lancedb_client = None
 
     def _init_openai_client(self):
