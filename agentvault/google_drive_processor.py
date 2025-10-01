@@ -1812,18 +1812,31 @@ class GoogleDriveProcessor:
     def _init_lancedb_client(self):
         """Initialize LanceDB client."""
         try:
+            print(f"DEBUG: Starting LanceDB initialization...")
+            print(f"DEBUG: LANCEDB_URI = {LANCEDB_URI}")
+            
             # Initialize LanceDB - create directory if it doesn't exist
             from pathlib import Path
             db_path = Path(LANCEDB_URI)
+            print(f"DEBUG: db_path = {db_path}")
+            print(f"DEBUG: db_path.absolute() = {db_path.absolute()}")
             
             # Ensure the parent directory exists
+            print(f"DEBUG: Creating parent directory: {db_path.parent}")
             db_path.parent.mkdir(parents=True, exist_ok=True)
+            print(f"DEBUG: Parent directory exists: {db_path.parent.exists()}")
             
             # Connect to LanceDB (this will create the database if it doesn't exist)
+            print(f"DEBUG: Connecting to LanceDB at: {str(db_path)}")
             self.lancedb_client = lancedb.connect(str(db_path))
+            print(f"DEBUG: LanceDB connection successful!")
             logger.info(f"LanceDB client initialized successfully at {db_path}")
 
         except Exception as e:
+            print(f"DEBUG: Exception during LanceDB init: {e}")
+            print(f"DEBUG: Exception type: {type(e)}")
+            import traceback
+            print(f"DEBUG: Full traceback:\n{traceback.format_exc()}")
             logger.error(f"Failed to initialize LanceDB client: {e}")
             self.lancedb_client = None
 
