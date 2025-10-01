@@ -33,9 +33,6 @@ app = typer.Typer(
 console = Console()
 
 
-
-
-
 @app.command("index-drive")
 def index_drive(
     output_file: str = typer.Option(
@@ -47,9 +44,7 @@ def index_drive(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Show detailed progress information"
     ),
-    debug: bool = typer.Option(
-        False, "--debug", help="Show debug information"
-    ),
+    debug: bool = typer.Option(False, "--debug", help="Show debug information"),
     limit: Optional[int] = typer.Option(
         None, "--limit", "-n", help="Process only N files"
     ),
@@ -58,7 +53,7 @@ def index_drive(
     ),
 ):
     """Index Google Drive files and create searchable database with detailed progress tracking."""
-    
+
     output_path = DATA_DIR / output_file
 
     # Check if index already exists
@@ -70,7 +65,7 @@ def index_drive(
             raise typer.Exit()
 
     console.print(Panel.fit("🔍 Starting Google Drive Indexing", style="bold blue"))
-    
+
     # Enhanced progress tracking
     with Progress(
         SpinnerColumn(),
@@ -102,16 +97,30 @@ def index_drive(
                 if verbose:
                     console.print(f"  {message}", style="dim")
 
-            if not processor.authenticate(progress_callback=auth_progress_callback, debug=debug):
+            if not processor.authenticate(
+                progress_callback=auth_progress_callback, debug=debug
+            ):
                 console.print(
                     "❌ Failed to authenticate with Google Drive", style="red"
                 )
-                console.print("\n📋 [bold]Authentication Setup Instructions:[/bold]", style="yellow")
-                console.print("1. Go to https://console.cloud.google.com/", style="yellow")
-                console.print("2. Create a new project or select existing one", style="yellow")
+                console.print(
+                    "\n📋 [bold]Authentication Setup Instructions:[/bold]",
+                    style="yellow",
+                )
+                console.print(
+                    "1. Go to https://console.cloud.google.com/", style="yellow"
+                )
+                console.print(
+                    "2. Create a new project or select existing one", style="yellow"
+                )
                 console.print("3. Enable the Google Drive API", style="yellow")
-                console.print("4. Create credentials (OAuth 2.0 Client ID)", style="yellow")
-                console.print("5. Download the JSON file and place it in the secret/ directory", style="yellow")
+                console.print(
+                    "4. Create credentials (OAuth 2.0 Client ID)", style="yellow"
+                )
+                console.print(
+                    "5. Download the JSON file and place it in the secret/ directory",
+                    style="yellow",
+                )
                 raise typer.Exit(1)
 
             progress.update(
@@ -146,10 +155,13 @@ def index_drive(
                     folders=stats["folders"],
                     docs=stats["documents"],
                 )
-                
+
                 # Show additional stats in verbose mode
                 if verbose and "processed" in stats:
-                    console.print(f"  📊 Processed: {stats['processed']}, Skipped: {stats.get('skipped', 0)}, Duplicates: {stats.get('duplicates', 0)}", style="dim")
+                    console.print(
+                        f"  📊 Processed: {stats['processed']}, Skipped: {stats.get('skipped', 0)}, Duplicates: {stats.get('duplicates', 0)}",
+                        style="dim",
+                    )
 
                 # Show current path in verbose mode
                 if verbose and current_path and phase != "saving":
@@ -289,7 +301,6 @@ def drive_summary(
         console.print(files_table)
 
 
-
 @app.callback()
 def main():
     """
@@ -308,108 +319,149 @@ def test():
 
 @app.command("list")
 def list_files(
-    pattern: Optional[str] = typer.Argument(None, help="Pattern to match file names/paths (supports wildcards)"),
+    pattern: Optional[str] = typer.Argument(
+        None, help="Pattern to match file names/paths (supports wildcards)"
+    ),
     index_file: str = typer.Option(
         GOOGLE_DRIVE_INDEX_FILE, "--file", "-f", help="Index file to read from"
     ),
     # Column toggles
     name: bool = typer.Option(True, "--name/--no-name", "-n", help="Show file names"),
     path: bool = typer.Option(False, "--path/--no-path", "-p", help="Show full paths"),
-    category: bool = typer.Option(True, "--category/--no-category", "-c", help="Show categories"),
-    language: bool = typer.Option(False, "--language/--no-language", "-l", help="Show detected language"),
+    category: bool = typer.Option(
+        True, "--category/--no-category", "-c", help="Show categories"
+    ),
+    language: bool = typer.Option(
+        False, "--language/--no-language", "-l", help="Show detected language"
+    ),
     size: bool = typer.Option(True, "--size/--no-size", "-s", help="Show file sizes"),
     mime: bool = typer.Option(False, "--mime/--no-mime", "-m", help="Show MIME types"),
-    modified: bool = typer.Option(False, "--modified/--no-modified", "-t", help="Show modification times"),
-    confidence: bool = typer.Option(False, "--confidence/--no-confidence", help="Show classification confidence"),
+    modified: bool = typer.Option(
+        False, "--modified/--no-modified", "-t", help="Show modification times"
+    ),
+    confidence: bool = typer.Option(
+        False, "--confidence/--no-confidence", help="Show classification confidence"
+    ),
     # Filters
-    filter_category: Optional[str] = typer.Option(None, "--filter-category", help="Filter by category"),
-    filter_language: Optional[str] = typer.Option(None, "--filter-language", help="Filter by language"),
-    filter_mime: Optional[str] = typer.Option(None, "--filter-mime", help="Filter by MIME type"),
-    folders_only: bool = typer.Option(False, "--folders-only", help="Show only folders"),
-    files_only: bool = typer.Option(False, "--files-only", help="Show only files (not folders)"),
+    filter_category: Optional[str] = typer.Option(
+        None, "--filter-category", help="Filter by category"
+    ),
+    filter_language: Optional[str] = typer.Option(
+        None, "--filter-language", help="Filter by language"
+    ),
+    filter_mime: Optional[str] = typer.Option(
+        None, "--filter-mime", help="Filter by MIME type"
+    ),
+    folders_only: bool = typer.Option(
+        False, "--folders-only", help="Show only folders"
+    ),
+    files_only: bool = typer.Option(
+        False, "--files-only", help="Show only files (not folders)"
+    ),
     # Display options
-    limit: Optional[int] = typer.Option(None, "--limit", help="Limit number of results"),
-    sort_by: str = typer.Option("name", "--sort", help="Sort by: name, size, modified, category"),
+    limit: Optional[int] = typer.Option(
+        None, "--limit", help="Limit number of results"
+    ),
+    sort_by: str = typer.Option(
+        "name", "--sort", help="Sort by: name, size, modified, category"
+    ),
     reverse: bool = typer.Option(False, "--reverse", "-r", help="Reverse sort order"),
 ):
     """List files from the Google Drive index with filtering and customizable columns."""
-    
+
     index_path = DATA_DIR / index_file
-    
+
     if not index_path.exists():
-        console.print(f"❌ Index file {index_file} not found at {index_path}", style="red")
+        console.print(
+            f"❌ Index file {index_file} not found at {index_path}", style="red"
+        )
         console.print("Please run Google Drive indexing first:", style="yellow")
         console.print("  [bold]agentvault index-drive[/bold]")
         raise typer.Exit(1)
-    
+
     try:
         import pandas as pd
+
         df = pd.read_parquet(index_path)
     except Exception as e:
         console.print(f"❌ Error reading index file: {e}", style="red")
         raise typer.Exit(1)
-    
+
     if df.empty:
         console.print("📂 No files found in index", style="yellow")
         return
-    
+
     # Apply filters
     filtered_df = df.copy()
-    
+
     # Pattern matching
     if pattern:
         if path:
             # Match against full path
-            mask = filtered_df['path'].str.contains(pattern.replace('*', '.*').replace('?', '.'), 
-                                                   case=False, regex=True, na=False)
+            mask = filtered_df["path"].str.contains(
+                pattern.replace("*", ".*").replace("?", "."),
+                case=False,
+                regex=True,
+                na=False,
+            )
         else:
             # Match against file name
-            mask = filtered_df['name'].str.contains(pattern.replace('*', '.*').replace('?', '.'), 
-                                                   case=False, regex=True, na=False)
+            mask = filtered_df["name"].str.contains(
+                pattern.replace("*", ".*").replace("?", "."),
+                case=False,
+                regex=True,
+                na=False,
+            )
         filtered_df = filtered_df[mask]
-    
+
     # Category filter
     if filter_category:
-        filtered_df = filtered_df[filtered_df['category'].str.contains(filter_category, case=False, na=False)]
-    
+        filtered_df = filtered_df[
+            filtered_df["category"].str.contains(filter_category, case=False, na=False)
+        ]
+
     # Language filter
     if filter_language:
-        filtered_df = filtered_df[filtered_df['language'].str.contains(filter_language, case=False, na=False)]
-    
+        filtered_df = filtered_df[
+            filtered_df["language"].str.contains(filter_language, case=False, na=False)
+        ]
+
     # MIME type filter
     if filter_mime:
-        filtered_df = filtered_df[filtered_df['mime_type'].str.contains(filter_mime, case=False, na=False)]
-    
+        filtered_df = filtered_df[
+            filtered_df["mime_type"].str.contains(filter_mime, case=False, na=False)
+        ]
+
     # Folder/file filters
     if folders_only:
-        filtered_df = filtered_df[filtered_df['is_folder'] == True]
+        filtered_df = filtered_df[filtered_df["is_folder"] == True]
     elif files_only:
-        filtered_df = filtered_df[filtered_df['is_folder'] == False]
-    
+        filtered_df = filtered_df[filtered_df["is_folder"] == False]
+
     if filtered_df.empty:
         console.print("📂 No files match the specified criteria", style="yellow")
         return
-    
+
     # Sort the results
     sort_column_map = {
-        'name': 'name',
-        'size': 'size',
-        'modified': 'modified_time',
-        'category': 'category'
+        "name": "name",
+        "size": "size",
+        "modified": "modified_time",
+        "category": "category",
     }
-    
+
     if sort_by in sort_column_map:
         sort_col = sort_column_map[sort_by]
         if sort_col in filtered_df.columns:
             filtered_df = filtered_df.sort_values(sort_col, ascending=not reverse)
-    
+
     # Apply limit
     if limit:
         filtered_df = filtered_df.head(limit)
-    
+
     # Create table with requested columns
     table = Table(title=f"📁 Files in Agent Vault ({len(filtered_df)} results)")
-    
+
     # Add columns based on flags
     if name:
         table.add_column("Name", style="cyan", no_wrap=False, max_width=40)
@@ -427,38 +479,38 @@ def list_files(
         table.add_column("Modified", style="dim", max_width=20)
     if confidence:
         table.add_column("Confidence", justify="right", style="bright_blue")
-    
+
     # Add rows
     for _, row in filtered_df.iterrows():
         row_data = []
-        
+
         if name:
-            file_name = row.get('name', 'Unknown')
-            if row.get('is_folder', False):
+            file_name = row.get("name", "Unknown")
+            if row.get("is_folder", False):
                 file_name = f"📁 {file_name}"
             else:
                 file_name = f"📄 {file_name}"
             row_data.append(file_name)
-        
+
         if path:
-            row_data.append(row.get('path', ''))
-        
+            row_data.append(row.get("path", ""))
+
         if category:
-            cat = row.get('category', 'Unknown')
-            subcat = row.get('subcategory', '')
-            if subcat and subcat != 'Unknown':
+            cat = row.get("category", "Unknown")
+            subcat = row.get("subcategory", "")
+            if subcat and subcat != "Unknown":
                 row_data.append(f"{cat}/{subcat}")
             else:
                 row_data.append(cat)
-        
+
         if language:
-            lang = row.get('language', 'unknown')
-            row_data.append(lang if lang != 'unknown' else '-')
-        
+            lang = row.get("language", "unknown")
+            row_data.append(lang if lang != "unknown" else "-")
+
         if size:
-            file_size = row.get('size', 0)
+            file_size = row.get("size", 0)
             if file_size > 0:
-                if file_size >= 1024*1024:
+                if file_size >= 1024 * 1024:
                     row_data.append(f"{file_size/(1024*1024):.1f} MB")
                 elif file_size >= 1024:
                     row_data.append(f"{file_size/1024:.1f} KB")
@@ -466,58 +518,65 @@ def list_files(
                     row_data.append(f"{file_size} B")
             else:
                 row_data.append("-")
-        
+
         if mime:
-            row_data.append(row.get('mime_type', 'unknown'))
-        
+            row_data.append(row.get("mime_type", "unknown"))
+
         if modified:
-            mod_time = row.get('modified_time', '')
+            mod_time = row.get("modified_time", "")
             if mod_time:
                 # Format the timestamp nicely
                 try:
                     from datetime import datetime
-                    dt = datetime.fromisoformat(mod_time.replace('Z', '+00:00'))
-                    row_data.append(dt.strftime('%Y-%m-%d %H:%M'))
+
+                    dt = datetime.fromisoformat(mod_time.replace("Z", "+00:00"))
+                    row_data.append(dt.strftime("%Y-%m-%d %H:%M"))
                 except:
                     row_data.append(mod_time[:16])  # Fallback to first 16 chars
             else:
-                row_data.append('-')
-        
+                row_data.append("-")
+
         if confidence:
-            conf = row.get('classification_confidence', 0.0)
+            conf = row.get("classification_confidence", 0.0)
             if conf > 0:
                 row_data.append(f"{conf:.2f}")
             else:
                 row_data.append("-")
-        
+
         table.add_row(*row_data)
-    
+
     console.print(table)
-    
+
     # Show summary
-    total_files = len(filtered_df[filtered_df['is_folder'] == False])
-    total_folders = len(filtered_df[filtered_df['is_folder'] == True])
-    total_size = filtered_df['size'].sum()
-    
+    total_files = len(filtered_df[filtered_df["is_folder"] == False])
+    total_folders = len(filtered_df[filtered_df["is_folder"] == True])
+    total_size = filtered_df["size"].sum()
+
     summary_text = f"📊 Summary: {total_files} files, {total_folders} folders"
     if total_size > 0:
-        if total_size >= 1024*1024*1024:
+        if total_size >= 1024 * 1024 * 1024:
             summary_text += f", {total_size/(1024*1024*1024):.1f} GB total"
-        elif total_size >= 1024*1024:
+        elif total_size >= 1024 * 1024:
             summary_text += f", {total_size/(1024*1024):.1f} MB total"
         else:
             summary_text += f", {total_size/1024:.1f} KB total"
-    
+
     console.print(f"\n{summary_text}", style="dim")
 
 
 @app.command("extract-pdfs")
 def extract_pdfs(
     index_file: str = typer.Option(
-        GOOGLE_DRIVE_INDEX_FILE, "--index", "-i", help="Google Drive index file to read from"
+        GOOGLE_DRIVE_INDEX_FILE,
+        "--index",
+        "-i",
+        help="Google Drive index file to read from",
     ),
     output_file: str = typer.Option(
-        "pdf_extractions.parquet", "--output", "-o", help="Output file for PDF extractions"
+        "pdf_extractions.parquet",
+        "--output",
+        "-o",
+        help="Output file for PDF extractions",
     ),
     limit: Optional[int] = typer.Option(
         None, "--limit", "-n", help="Limit number of PDFs to process"
@@ -530,48 +589,59 @@ def extract_pdfs(
     ),
 ):
     """Extract full text from PDF files using BookWyrm API."""
-    
+
     index_path = DATA_DIR / index_file
     output_path = DATA_DIR / output_file
-    
+
     if not index_path.exists():
-        console.print(f"❌ Index file {index_file} not found at {index_path}", style="red")
+        console.print(
+            f"❌ Index file {index_file} not found at {index_path}", style="red"
+        )
         console.print("Please run Google Drive indexing first:", style="yellow")
         console.print("  [bold]agentvault index-drive[/bold]")
         raise typer.Exit(1)
-    
+
     # Check if output already exists
     if not force and output_path.exists():
-        if not typer.confirm(f"Extractions file {output_file} already exists. Continue anyway?"):
+        if not typer.confirm(
+            f"Extractions file {output_file} already exists. Continue anyway?"
+        ):
             console.print("❌ Extraction cancelled", style="yellow")
             raise typer.Exit()
-    
+
     # Check prerequisites before starting
     processor = GoogleDriveProcessor()
-    
+
     if not processor.bookwyrm_client:
         console.print("❌ BookWyrm API key not found", style="red")
         console.print("\n📋 [bold]Setup Instructions:[/bold]", style="yellow")
         console.print("1. Get an API key from https://api.bookwyrm.ai", style="yellow")
         console.print("2. Set environment variable:", style="yellow")
-        console.print("   [cyan]export BOOKWYRM_API_KEY='your-api-key-here'[/cyan]", style="yellow")
+        console.print(
+            "   [cyan]export BOOKWYRM_API_KEY='your-api-key-here'[/cyan]",
+            style="yellow",
+        )
         console.print("3. Run the command again", style="yellow")
         raise typer.Exit(1)
-    
+
     # Import the HAS_PDF_SUPPORT flag
     from .google_drive_processor import HAS_PDF_SUPPORT
-    
+
     if not HAS_PDF_SUPPORT:
-        console.print("❌ PDF extraction not supported in current BookWyrm client", style="red")
+        console.print(
+            "❌ PDF extraction not supported in current BookWyrm client", style="red"
+        )
         console.print("\n📋 [bold]Upgrade Instructions:[/bold]", style="yellow")
         console.print("1. Upgrade BookWyrm client:", style="yellow")
-        console.print("   [cyan]pip install --upgrade bookwyrm-client[/cyan]", style="yellow")
+        console.print(
+            "   [cyan]pip install --upgrade bookwyrm-client[/cyan]", style="yellow"
+        )
         console.print("2. Or install from source if needed", style="yellow")
         console.print("3. Run the command again", style="yellow")
         raise typer.Exit(1)
-    
+
     console.print(Panel.fit("📄 Starting PDF Text Extraction", style="bold blue"))
-    
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -583,71 +653,79 @@ def extract_pdfs(
         console=console,
         transient=False,
     ) as progress:
-        
+
         # Authentication task
         auth_task = progress.add_task(
             "🔐 Authenticating...", total=100, processed=0, skipped=0, errors=0
         )
-        
+
         try:
             # processor already created above for prerequisite checks
             if not processor.service:
                 if not processor.authenticate():
-                    console.print("❌ Failed to authenticate with Google Drive", style="red")
+                    console.print(
+                        "❌ Failed to authenticate with Google Drive", style="red"
+                    )
                     raise typer.Exit(1)
-            
+
             progress.update(auth_task, advance=100, description="✅ Authenticated")
-            
+
             # Extraction task
             extract_task = progress.add_task(
-                "📄 Extracting PDF text...", total=None, processed=0, skipped=0, errors=0
+                "📄 Extracting PDF text...",
+                total=None,
+                processed=0,
+                skipped=0,
+                errors=0,
             )
-            
+
             def update_progress(stats):
-                phase = stats.get('phase', 'processing')
-                current_file = stats.get('current_file', '')
-                
-                if phase == 'saving':
+                phase = stats.get("phase", "processing")
+                current_file = stats.get("current_file", "")
+
+                if phase == "saving":
                     description = "💾 Saving extractions..."
                 else:
                     if verbose and current_file:
                         description = f"📄 Processing: {current_file}"
                     else:
-                        description = f"📄 Extracting text... ({stats['processed']} processed)"
-                
+                        description = (
+                            f"📄 Extracting text... ({stats['processed']} processed)"
+                        )
+
                 progress.update(
                     extract_task,
                     description=description,
-                    total=stats.get('total', None),
-                    completed=stats['processed'],
-                    processed=stats['processed'],
-                    skipped=stats['skipped'],
-                    errors=stats['errors']
+                    total=stats.get("total", None),
+                    completed=stats["processed"],
+                    processed=stats["processed"],
+                    skipped=stats["skipped"],
+                    errors=stats["errors"],
                 )
-                
-                if verbose and current_file and phase != 'saving':
+
+                if verbose and current_file and phase != "saving":
                     console.print(f"  📄 {current_file}", style="dim")
-            
+
             success = processor.process_pdf_extractions(
                 index_file=index_file,
                 output_file=output_file,
                 progress_callback=update_progress,
-                limit=limit
+                limit=limit,
             )
-            
+
             if not success:
                 console.print("❌ PDF extraction failed", style="red")
                 raise typer.Exit(1)
-            
+
             progress.update(extract_task, description="✅ Extraction completed")
-            
+
         except KeyboardInterrupt:
             console.print("\n⚠️  Extraction interrupted by user", style="yellow")
             raise typer.Exit(1)
         except Exception as e:
             console.print(f"❌ Error during extraction: {e}", style="red")
             raise typer.Exit(1)
-    
+
     console.print("✅ PDF text extraction completed!", style="green bold")
     console.print(f"📁 Extractions saved to: [bold blue]{output_path}[/bold blue]")
 
@@ -655,10 +733,15 @@ def extract_pdfs(
 @app.command("process-phrases")
 def process_phrases(
     index_file: str = typer.Option(
-        GOOGLE_DRIVE_INDEX_FILE, "--index", "-i", help="Google Drive index file to read from"
+        GOOGLE_DRIVE_INDEX_FILE,
+        "--index",
+        "-i",
+        help="Google Drive index file to read from",
     ),
     pdf_extractions_file: str = typer.Option(
-        "pdf_extractions.parquet", "--pdf-extractions", help="PDF extractions file to use"
+        "pdf_extractions.parquet",
+        "--pdf-extractions",
+        help="PDF extractions file to use",
     ),
     output_file: str = typer.Option(
         "content_phrases.parquet", "--output", "-o", help="Output file for phrases"
@@ -674,48 +757,60 @@ def process_phrases(
     ),
 ):
     """Process all text content into phrases using BookWyrm phrasal API."""
-    
+
     index_path = DATA_DIR / index_file
     output_path = DATA_DIR / output_file
-    
+
     if not index_path.exists():
-        console.print(f"❌ Index file {index_file} not found at {index_path}", style="red")
+        console.print(
+            f"❌ Index file {index_file} not found at {index_path}", style="red"
+        )
         console.print("Please run Google Drive indexing first:", style="yellow")
         console.print("  [bold]agentvault index-drive[/bold]")
         raise typer.Exit(1)
-    
+
     # Check if output already exists
     if not force and output_path.exists():
-        if not typer.confirm(f"Phrases file {output_file} already exists. Continue anyway?"):
+        if not typer.confirm(
+            f"Phrases file {output_file} already exists. Continue anyway?"
+        ):
             console.print("❌ Processing cancelled", style="yellow")
             raise typer.Exit()
-    
+
     # Check prerequisites before starting
     processor = GoogleDriveProcessor()
-    
+
     if not processor.bookwyrm_client:
         console.print("❌ BookWyrm API key not found", style="red")
         console.print("\n📋 [bold]Setup Instructions:[/bold]", style="yellow")
         console.print("1. Get an API key from https://api.bookwyrm.ai", style="yellow")
         console.print("2. Set environment variable:", style="yellow")
-        console.print("   [cyan]export BOOKWYRM_API_KEY='your-api-key-here'[/cyan]", style="yellow")
+        console.print(
+            "   [cyan]export BOOKWYRM_API_KEY='your-api-key-here'[/cyan]",
+            style="yellow",
+        )
         console.print("3. Run the command again", style="yellow")
         raise typer.Exit(1)
-    
+
     # Import the HAS_PDF_SUPPORT flag
     from .google_drive_processor import HAS_PDF_SUPPORT
-    
+
     if not HAS_PDF_SUPPORT:
-        console.print("❌ Phrasal processing not supported in current BookWyrm client", style="red")
+        console.print(
+            "❌ Phrasal processing not supported in current BookWyrm client",
+            style="red",
+        )
         console.print("\n📋 [bold]Upgrade Instructions:[/bold]", style="yellow")
         console.print("1. Upgrade BookWyrm client:", style="yellow")
-        console.print("   [cyan]pip install --upgrade bookwyrm-client[/cyan]", style="yellow")
+        console.print(
+            "   [cyan]pip install --upgrade bookwyrm-client[/cyan]", style="yellow"
+        )
         console.print("2. Or install from source if needed", style="yellow")
         console.print("3. Run the command again", style="yellow")
         raise typer.Exit(1)
-    
+
     console.print(Panel.fit("🔤 Starting Phrasal Processing", style="bold blue"))
-    
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -727,70 +822,74 @@ def process_phrases(
         console=console,
         transient=False,
     ) as progress:
-        
+
         try:
             # processor already created above for prerequisite checks
-            
+
             # Processing task
             process_task = progress.add_task(
                 "🔤 Processing phrases...", total=None, processed=0, skipped=0, errors=0
             )
-            
+
             def update_progress(stats):
-                phase = stats.get('phase', 'processing')
-                current_file = stats.get('current_file', '')
-                
-                if phase == 'saving':
+                phase = stats.get("phase", "processing")
+                current_file = stats.get("current_file", "")
+
+                if phase == "saving":
                     description = "💾 Saving phrases..."
                 else:
                     if verbose and current_file:
                         description = f"🔤 Processing: {current_file}"
                     else:
-                        description = f"🔤 Creating phrases... ({stats['processed']} processed)"
-                
+                        description = (
+                            f"🔤 Creating phrases... ({stats['processed']} processed)"
+                        )
+
                 progress.update(
                     process_task,
                     description=description,
-                    total=stats.get('total', None),
-                    completed=stats['processed'],
-                    processed=stats['processed'],
-                    skipped=stats['skipped'],
-                    errors=stats['errors']
+                    total=stats.get("total", None),
+                    completed=stats["processed"],
+                    processed=stats["processed"],
+                    skipped=stats["skipped"],
+                    errors=stats["errors"],
                 )
-                
-                if verbose and current_file and phase != 'saving':
+
+                if verbose and current_file and phase != "saving":
                     console.print(f"  🔤 {current_file}", style="dim")
-            
+
             success = processor.process_phrases_from_all_content(
                 index_file=index_file,
                 pdf_extractions_file=pdf_extractions_file,
                 output_file=output_file,
                 progress_callback=update_progress,
-                limit=limit
+                limit=limit,
             )
-            
+
             if not success:
                 console.print("❌ Phrasal processing failed", style="red")
                 raise typer.Exit(1)
-            
+
             progress.update(process_task, description="✅ Processing completed")
-            
+
         except KeyboardInterrupt:
             console.print("\n⚠️  Processing interrupted by user", style="yellow")
             raise typer.Exit(1)
         except Exception as e:
             console.print(f"❌ Error during processing: {e}", style="red")
             raise typer.Exit(1)
-    
+
     console.print("✅ Phrasal processing completed!", style="green bold")
     console.print(f"📁 Phrases saved to: [bold blue]{output_path}[/bold blue]")
-
 
 
 @app.command("create-summaries")
 def create_summaries(
     phrases_file: str = typer.Option(
-        "content_phrases.parquet", "--phrases", "-p", help="Phrases file to summarize from"
+        "content_phrases.parquet",
+        "--phrases",
+        "-p",
+        help="Phrases file to summarize from",
     ),
     output_file: str = typer.Option(
         "content_summaries.parquet", "--output", "-o", help="Output file for summaries"
@@ -812,30 +911,38 @@ def create_summaries(
     ),
 ):
     """Create summaries from phrasal content using the summarize-endpoint service."""
-    
+
     phrases_path = DATA_DIR / phrases_file
     output_path = DATA_DIR / output_file
-    
+
     if not phrases_path.exists():
-        console.print(f"❌ Phrases file {phrases_file} not found at {phrases_path}", style="red")
+        console.print(
+            f"❌ Phrases file {phrases_file} not found at {phrases_path}", style="red"
+        )
         console.print("Please run phrasal processing first:", style="yellow")
         console.print("  [bold]agentvault process-phrases[/bold]")
         raise typer.Exit(1)
-    
+
     # Validate max_tokens
     if max_tokens > 131072:
-        console.print(f"❌ max_tokens cannot exceed 131,072 (got {max_tokens})", style="red")
+        console.print(
+            f"❌ max_tokens cannot exceed 131,072 (got {max_tokens})", style="red"
+        )
         raise typer.Exit(1)
     if max_tokens < 1:
-        console.print(f"❌ max_tokens must be at least 1 (got {max_tokens})", style="red")
+        console.print(
+            f"❌ max_tokens must be at least 1 (got {max_tokens})", style="red"
+        )
         raise typer.Exit(1)
-    
+
     # Check if output already exists
     if not force and output_path.exists():
-        if not typer.confirm(f"Summaries file {output_file} already exists. Continue anyway?"):
+        if not typer.confirm(
+            f"Summaries file {output_file} already exists. Continue anyway?"
+        ):
             console.print("❌ Processing cancelled", style="yellow")
             raise typer.Exit()
-    
+
     # Check for API token
     api_token = os.getenv("BOOKWYRM_API_KEY")
     if not api_token:
@@ -843,13 +950,16 @@ def create_summaries(
         console.print("\n📋 [bold]Setup Instructions:[/bold]", style="yellow")
         console.print("1. Get an API key from https://api.bookwyrm.ai", style="yellow")
         console.print("2. Set environment variable:", style="yellow")
-        console.print("   [cyan]export BOOKWYRM_API_KEY='your-api-key-here'[/cyan]", style="yellow")
+        console.print(
+            "   [cyan]export BOOKWYRM_API_KEY='your-api-key-here'[/cyan]",
+            style="yellow",
+        )
         console.print("3. Run the command again", style="yellow")
         raise typer.Exit(1)
-    
+
     console.print(Panel.fit("📝 Starting Content Summarization", style="bold blue"))
     console.print(f"🌐 Using endpoint: {summarize_endpoint}", style="dim")
-    
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -861,41 +971,43 @@ def create_summaries(
         console=console,
         transient=False,
     ) as progress:
-        
+
         try:
             # Processing task
             process_task = progress.add_task(
                 "📝 Creating summaries...", total=None, processed=0, skipped=0, errors=0
             )
-            
+
             def update_progress(stats):
-                phase = stats.get('phase', 'processing')
-                current_file = stats.get('current_file', '')
-                
-                if phase == 'saving':
+                phase = stats.get("phase", "processing")
+                current_file = stats.get("current_file", "")
+
+                if phase == "saving":
                     description = "💾 Saving summaries..."
                 else:
                     if verbose and current_file:
                         description = f"📝 Processing: {current_file}"
                     else:
-                        description = f"📝 Creating summaries... ({stats['processed']} processed)"
-                
+                        description = (
+                            f"📝 Creating summaries... ({stats['processed']} processed)"
+                        )
+
                 progress.update(
                     process_task,
                     description=description,
-                    total=stats.get('total', None),
-                    completed=stats['processed'],
-                    processed=stats['processed'],
-                    skipped=stats['skipped'],
-                    errors=stats['errors']
+                    total=stats.get("total", None),
+                    completed=stats["processed"],
+                    processed=stats["processed"],
+                    skipped=stats["skipped"],
+                    errors=stats["errors"],
                 )
-                
-                if verbose and current_file and phase != 'saving':
+
+                if verbose and current_file and phase != "saving":
                     console.print(f"  📝 {current_file}", style="dim")
-            
+
             # Create processor instance
             processor = GoogleDriveProcessor()
-            
+
             success = processor.process_summaries_via_endpoint(
                 phrases_file=phrases_file,
                 output_file=output_file,
@@ -903,22 +1015,22 @@ def create_summaries(
                 limit=limit,
                 max_tokens=max_tokens,
                 endpoint_url=summarize_endpoint,
-                api_token=api_token
+                api_token=api_token,
             )
-            
+
             if not success:
                 console.print("❌ Summarization failed", style="red")
                 raise typer.Exit(1)
-            
+
             progress.update(process_task, description="✅ Summarization completed")
-            
+
         except KeyboardInterrupt:
             console.print("\n⚠️  Summarization interrupted by user", style="yellow")
             raise typer.Exit(1)
         except Exception as e:
             console.print(f"❌ Error during summarization: {e}", style="red")
             raise typer.Exit(1)
-    
+
     console.print("✅ Content summarization completed!", style="green bold")
     console.print(f"📁 Summaries saved to: [bold blue]{output_path}[/bold blue]")
 
@@ -926,10 +1038,16 @@ def create_summaries(
 @app.command("create-title-cards")
 def create_title_cards(
     summaries_file: str = typer.Option(
-        "content_summaries.parquet", "--summaries", "-s", help="Summaries file to create title cards from"
+        "content_summaries.parquet",
+        "--summaries",
+        "-s",
+        help="Summaries file to create title cards from",
     ),
     index_file: str = typer.Option(
-        GOOGLE_DRIVE_INDEX_FILE, "--index", "-i", help="Google Drive index file for metadata"
+        GOOGLE_DRIVE_INDEX_FILE,
+        "--index",
+        "-i",
+        help="Google Drive index file for metadata",
     ),
     output_file: str = typer.Option(
         "title_cards.parquet", "--output", "-o", help="Output file for title cards"
@@ -945,31 +1063,38 @@ def create_title_cards(
     ),
 ):
     """Create title cards from summaries with extracted metadata."""
-    
+
     summaries_path = DATA_DIR / summaries_file
     index_path = DATA_DIR / index_file
     output_path = DATA_DIR / output_file
-    
+
     if not summaries_path.exists():
-        console.print(f"❌ Summaries file {summaries_file} not found at {summaries_path}", style="red")
+        console.print(
+            f"❌ Summaries file {summaries_file} not found at {summaries_path}",
+            style="red",
+        )
         console.print("Please run summarization first:", style="yellow")
         console.print("  [bold]agentvault create-summaries[/bold]")
         raise typer.Exit(1)
-    
+
     if not index_path.exists():
-        console.print(f"❌ Index file {index_file} not found at {index_path}", style="red")
+        console.print(
+            f"❌ Index file {index_file} not found at {index_path}", style="red"
+        )
         console.print("Please run indexing first:", style="yellow")
         console.print("  [bold]agentvault index-drive[/bold]")
         raise typer.Exit(1)
-    
+
     # Check if output already exists
     if not force and output_path.exists():
-        if not typer.confirm(f"Title cards file {output_file} already exists. Continue anyway?"):
+        if not typer.confirm(
+            f"Title cards file {output_file} already exists. Continue anyway?"
+        ):
             console.print("❌ Processing cancelled", style="yellow")
             raise typer.Exit()
-    
+
     console.print(Panel.fit("🎴 Starting Title Card Creation", style="bold blue"))
-    
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -981,62 +1106,70 @@ def create_title_cards(
         console=console,
         transient=False,
     ) as progress:
-        
+
         try:
             # Processing task
             process_task = progress.add_task(
-                "🎴 Creating title cards...", total=None, processed=0, skipped=0, errors=0
+                "🎴 Creating title cards...",
+                total=None,
+                processed=0,
+                skipped=0,
+                errors=0,
             )
-            
+
             def update_progress(stats):
-                phase = stats.get('phase', 'processing')
-                current_file = stats.get('current_file', '')
-                
-                if phase == 'saving':
+                phase = stats.get("phase", "processing")
+                current_file = stats.get("current_file", "")
+
+                if phase == "saving":
                     description = "💾 Saving title cards..."
                 else:
                     if verbose and current_file:
                         description = f"🎴 Processing: {current_file}"
                     else:
                         description = f"🎴 Creating title cards... ({stats['processed']} processed)"
-                
+
                 progress.update(
                     process_task,
                     description=description,
-                    total=stats.get('total', None),
-                    completed=stats['processed'],
-                    processed=stats['processed'],
-                    skipped=stats['skipped'],
-                    errors=stats['errors']
+                    total=stats.get("total", None),
+                    completed=stats["processed"],
+                    processed=stats["processed"],
+                    skipped=stats["skipped"],
+                    errors=stats["errors"],
                 )
-                
-                if verbose and current_file and phase != 'saving':
+
+                if verbose and current_file and phase != "saving":
                     console.print(f"  🎴 {current_file}", style="dim")
-            
+
             # Create processor instance
             processor = GoogleDriveProcessor()
-            
+
             success = processor.create_title_cards(
                 summaries_file=summaries_file,
                 index_file=index_file,
                 output_file=output_file,
                 progress_callback=update_progress,
-                limit=limit
+                limit=limit,
             )
-            
+
             if not success:
                 console.print("❌ Title card creation failed", style="red")
                 raise typer.Exit(1)
-            
-            progress.update(process_task, description="✅ Title card creation completed")
-            
+
+            progress.update(
+                process_task, description="✅ Title card creation completed"
+            )
+
         except KeyboardInterrupt:
-            console.print("\n⚠️  Title card creation interrupted by user", style="yellow")
+            console.print(
+                "\n⚠️  Title card creation interrupted by user", style="yellow"
+            )
             raise typer.Exit(1)
         except Exception as e:
             console.print(f"❌ Error during title card creation: {e}", style="red")
             raise typer.Exit(1)
-    
+
     console.print("✅ Title card creation completed!", style="green bold")
     console.print(f"📁 Title cards saved to: [bold blue]{output_path}[/bold blue]")
 
@@ -1060,18 +1193,21 @@ def index_titles(
     ),
 ):
     """Index title cards in LanceDB for vector search."""
-    
+
     title_cards_path = DATA_DIR / title_cards_file
-    
+
     if not title_cards_path.exists():
-        console.print(f"❌ Title cards file {title_cards_file} not found at {title_cards_path}", style="red")
+        console.print(
+            f"❌ Title cards file {title_cards_file} not found at {title_cards_path}",
+            style="red",
+        )
         console.print("Please run title card creation first:", style="yellow")
         console.print("  [bold]agentvault create-title-cards[/bold]")
         raise typer.Exit(1)
-    
+
     # Check for LanceDB and OpenAI support
     processor = GoogleDriveProcessor()
-    
+
     if not processor.lancedb_client:
         console.print("❌ LanceDB client not available", style="red")
         console.print("\n📋 [bold]Installation Instructions:[/bold]", style="yellow")
@@ -1079,20 +1215,27 @@ def index_titles(
         console.print("   [cyan]uv add lancedb[/cyan]", style="yellow")
         console.print("2. Run the command again", style="yellow")
         raise typer.Exit(1)
-    
+
     if not processor.openai_client:
         console.print("❌ OpenAI client not available", style="red")
         console.print("\n📋 [bold]Setup Instructions:[/bold]", style="yellow")
         console.print("1. Install OpenAI dependencies:", style="yellow")
         console.print("   [cyan]uv add openai[/cyan]", style="yellow")
         console.print("2. Set your OpenAI API key:", style="yellow")
-        console.print("   [cyan]export OPENAI_API_KEY='your-api-key-here'[/cyan]", style="yellow")
+        console.print(
+            "   [cyan]export OPENAI_API_KEY='your-api-key-here'[/cyan]", style="yellow"
+        )
         console.print("3. Run the command again", style="yellow")
         raise typer.Exit(1)
-    
-    console.print(Panel.fit("🔍 Starting Title Card Indexing in LanceDB", style="bold blue"))
-    console.print(f"📊 Table: [cyan]{processor.lancedb_client.table_names() if processor.lancedb_client else 'title_cards'}[/cyan]", style="dim")
-    
+
+    console.print(
+        Panel.fit("🔍 Starting Title Card Indexing in LanceDB", style="bold blue")
+    )
+    console.print(
+        f"📊 Table: [cyan]{processor.lancedb_client.table_names() if processor.lancedb_client else 'title_cards'}[/cyan]",
+        style="dim",
+    )
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -1103,99 +1246,106 @@ def index_titles(
         console=console,
         transient=False,
     ) as progress:
-        
+
         try:
             # Processing task
             process_task = progress.add_task(
                 "🔍 Indexing title cards...", total=None, processed=0, errors=0
             )
-            
+
             def update_progress(stats):
-                phase = stats.get('phase', 'processing')
-                current_file = stats.get('current_file', '')
-                
-                if phase == 'completed':
+                phase = stats.get("phase", "processing")
+                current_file = stats.get("current_file", "")
+
+                if phase == "completed":
                     description = "✅ Indexing completed"
                 else:
                     if verbose and current_file:
                         description = f"🔍 Processing: {current_file}"
                     else:
                         description = f"🔍 Indexing title cards... ({stats['processed']} processed)"
-                
+
                 progress.update(
                     process_task,
                     description=description,
-                    total=stats.get('total', None),
-                    completed=stats['processed'],
-                    processed=stats['processed'],
-                    errors=stats['errors']
+                    total=stats.get("total", None),
+                    completed=stats["processed"],
+                    processed=stats["processed"],
+                    errors=stats["errors"],
                 )
-                
-                if verbose and current_file and phase != 'completed':
+
+                if verbose and current_file and phase != "completed":
                     console.print(f"  🔍 {current_file}", style="dim")
-            
+
             success = processor.index_title_cards_in_lancedb(
                 title_cards_file=title_cards_file,
                 progress_callback=update_progress,
                 limit=limit,
-                batch_size=batch_size
+                batch_size=batch_size,
             )
-            
+
             if not success:
                 console.print("❌ Title card indexing failed", style="red")
                 raise typer.Exit(1)
-            
+
             progress.update(process_task, description="✅ Indexing completed")
-            
+
         except KeyboardInterrupt:
             console.print("\n⚠️  Indexing interrupted by user", style="yellow")
             raise typer.Exit(1)
         except Exception as e:
             console.print(f"❌ Error during indexing: {e}", style="red")
             raise typer.Exit(1)
-    
+
     console.print("✅ Title card indexing completed!", style="green bold")
     console.print("🔍 Your title cards are now searchable in LanceDB!", style="green")
 
 
 @app.command("clear-indexes")
 def clear_indexes(
-    confirm: bool = typer.Option(
-        False, "--confirm", help="Skip confirmation prompt"
-    ),
+    confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt"),
 ):
     """Clear and recreate LanceDB table."""
-    
+
     if not confirm:
-        console.print("⚠️  This will permanently delete all indexed title cards!", style="red bold")
+        console.print(
+            "⚠️  This will permanently delete all indexed title cards!", style="red bold"
+        )
         if not typer.confirm("Are you sure you want to clear the table?"):
             console.print("❌ Operation cancelled", style="yellow")
             raise typer.Exit()
-    
+
     # Check for LanceDB support
     processor = GoogleDriveProcessor()
-    
+
     if not processor.lancedb_client:
         console.print("❌ LanceDB client not available", style="red")
         console.print("\n📋 [bold]Installation Instructions:[/bold]", style="yellow")
         console.print("1. Install LanceDB dependencies:", style="yellow")
         console.print("   [cyan]uv add lancedb openai[/cyan]", style="yellow")
         console.print("2. Set your OpenAI API key:", style="yellow")
-        console.print("   [cyan]export OPENAI_API_KEY='your-api-key-here'[/cyan]", style="yellow")
+        console.print(
+            "   [cyan]export OPENAI_API_KEY='your-api-key-here'[/cyan]", style="yellow"
+        )
         raise typer.Exit(1)
-    
+
     console.print(Panel.fit("🗑️  Clearing LanceDB Table", style="bold red"))
-    
+
     try:
         success = processor.clear_lancedb_table()
-        
+
         if success:
-            console.print("✅ Table cleared and recreated successfully!", style="green bold")
-            console.print("💡 You can now run [bold]agentvault index-titles[/bold] to reindex your title cards", style="blue")
+            console.print(
+                "✅ Table cleared and recreated successfully!", style="green bold"
+            )
+            console.print(
+                "💡 You can now run [bold]agentvault index-titles[/bold] to reindex your title cards",
+                style="blue",
+            )
         else:
             console.print("❌ Failed to clear table", style="red")
             raise typer.Exit(1)
-            
+
     except Exception as e:
         console.print(f"❌ Error clearing table: {e}", style="red")
         raise typer.Exit(1)
