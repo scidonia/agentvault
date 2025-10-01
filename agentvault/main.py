@@ -1208,7 +1208,7 @@ def index_titles(
     # Check for LanceDB and OpenAI support
     processor = GoogleDriveProcessor()
 
-    if not processor.lancedb_client:
+    if processor.lancedb_client is None:
         console.print("❌ LanceDB client initialization failed", style="red")
         console.print("\n📋 [bold]Troubleshooting:[/bold]", style="yellow")
         console.print("1. Check that the data directory is writable", style="yellow")
@@ -1318,7 +1318,7 @@ def clear_indexes(
     # Check for LanceDB support
     processor = GoogleDriveProcessor()
 
-    if not processor.lancedb_client:
+    if processor.lancedb_client is None:
         console.print("❌ LanceDB client initialization failed", style="red")
         console.print("\n📋 [bold]Troubleshooting:[/bold]", style="yellow")
         console.print("1. Check that the data directory is writable", style="yellow")

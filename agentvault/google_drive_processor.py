@@ -1851,7 +1851,7 @@ class GoogleDriveProcessor:
 
     def _ensure_lancedb_table(self):
         """Ensure LanceDB table exists, create it if it doesn't."""
-        if not self.lancedb_client:
+        if self.lancedb_client is None:
             return False
 
         try:
@@ -1910,7 +1910,7 @@ class GoogleDriveProcessor:
     ) -> bool:
         """Index title cards in LanceDB with vector embeddings."""
 
-        if not self.lancedb_client:
+        if self.lancedb_client is None:
             logger.error("LanceDB client not initialized")
             return False
 
@@ -2054,7 +2054,7 @@ class GoogleDriveProcessor:
 
     def clear_lancedb_table(self) -> bool:
         """Clear and recreate LanceDB table."""
-        if not self.lancedb_client:
+        if self.lancedb_client is None:
             logger.error("LanceDB client not initialized")
             return False
 
