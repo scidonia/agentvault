@@ -100,10 +100,10 @@ class TitleCardQueryAgent:
             table = self.lancedb_client.open_table(TITLES_TABLE)
             
             update_status("Analyzing similarity scores...")
-            # Perform vector search with top-k=15
+            # Perform vector search with top-k=25
             search_results = (
                 table.search(question_embedding)
-                .limit(15)
+                .limit(25)
                 .to_pandas()
             )
 
@@ -148,7 +148,7 @@ class TitleCardQueryAgent:
                 }
                 results.append(result)
 
-            # Calculate threshold (similarity of the 15th result)
+            # Calculate threshold (similarity of the 25th result)
             threshold = min(similarities) if similarities else 0.0
 
             state["search_results"] = results
