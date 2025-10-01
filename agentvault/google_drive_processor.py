@@ -1815,23 +1815,16 @@ class GoogleDriveProcessor:
             # Initialize LanceDB - create directory if it doesn't exist
             from pathlib import Path
             db_path = Path(LANCEDB_URI)
-            print(f"DEBUG: LANCEDB_URI = {LANCEDB_URI}")
-            print(f"DEBUG: db_path = {db_path}")
-            print(f"DEBUG: db_path.parent = {db_path.parent}")
             
+            # Ensure the parent directory exists
             db_path.parent.mkdir(parents=True, exist_ok=True)
-            print(f"DEBUG: Directory created/exists: {db_path.parent.exists()}")
             
-            self.lancedb_client = lancedb.connect(LANCEDB_URI)
-            print("DEBUG: LanceDB client connected successfully")
-            logger.info("LanceDB client initialized successfully")
+            # Connect to LanceDB (this will create the database if it doesn't exist)
+            self.lancedb_client = lancedb.connect(str(db_path))
+            logger.info(f"LanceDB client initialized successfully at {db_path}")
 
         except Exception as e:
-            print(f"DEBUG: LanceDB initialization error: {e}")
-            print(f"DEBUG: Error type: {type(e)}")
-            import traceback
-            print(f"DEBUG: Traceback: {traceback.format_exc()}")
-            logger.warning(f"Failed to initialize LanceDB client: {e}")
+            logger.error(f"Failed to initialize LanceDB client: {e}")
             self.lancedb_client = None
 
     def _init_openai_client(self):
