@@ -1,9 +1,9 @@
 [project]
 name = "agentvault"
 version = "0.1.0"
-description = "A RAG application using BookWyrm and LangGraph for literary text analysis"
+description = "A RAG application using BookWyrm and LangGraph for text analysis"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11,<3.13"
 dependencies = [
   "bookwyrm>=0.1.0",
   "langgraph>=0.0.40",
@@ -11,7 +11,7 @@ dependencies = [
   "scikit-learn>=1.3.0",
   "numpy>=1.24.0",
   "requests>=2.31.0",
-  "typer[all]>=0.9.0",
+  "typer>=0.9.0",
   "rich>=13.0.0",
   "google-api-python-client>=2.183.0",
   "google-auth-httplib2>=0.2.0",
@@ -19,11 +19,16 @@ dependencies = [
   "pandas>=2.3.2",
   "google-auth>=2.40.3",
   "pyarrow>=21.0.0",
+  "lancedb>=0.25.1",
+  "openai>=2.0.0",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["duckdb>=1.4.0"]
 
 [project.scripts]
 agentvault = "agentvault.main:main"
