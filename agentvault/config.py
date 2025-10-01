@@ -8,6 +8,13 @@ DATA_DIR = Path("data")
 PROCESSED_DIR = DATA_DIR / "processed"
 RAW_DIR = DATA_DIR / "raw"
 
+# Partitioned data directories
+GOOGLE_DRIVE_INDEX_DIR = DATA_DIR / "google_drive_index"
+PDF_EXTRACTIONS_DIR = DATA_DIR / "pdf_extractions"
+CONTENT_PHRASES_DIR = DATA_DIR / "content_phrases"
+CONTENT_SUMMARIES_DIR = DATA_DIR / "content_summaries"
+TITLE_CARDS_DIR = DATA_DIR / "title_cards"
+
 # Gutenberg texts
 GUTENBERG_URLS = [
     "https://www.gutenberg.org/cache/epub/32154/pg32154.txt",
@@ -47,3 +54,5 @@ OPENAI_CHAT_MODEL = "gpt-4o-mini"
 DATA_DIR.mkdir(exist_ok=True)
 PROCESSED_DIR.mkdir(exist_ok=True)
 RAW_DIR.mkdir(exist_ok=True)
+
+# Partitioned directories will be created as needed
