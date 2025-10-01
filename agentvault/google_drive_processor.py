@@ -58,15 +58,7 @@ except ImportError as e:
     raise
 
 # Import LanceDB and embedding libraries
-try:
-    import lancedb
-
-    HAS_LANCEDB_SUPPORT = True
-except ImportError as e:
-    print(f"⚠️  LanceDB indexing not available: {e}")
-    print("To enable LanceDB indexing, install: uv add lancedb")
-    HAS_LANCEDB_SUPPORT = False
-    lancedb = None
+import lancedb
 
 # Import OpenAI client
 try:
@@ -1819,11 +1811,6 @@ class GoogleDriveProcessor:
 
     def _init_lancedb_client(self):
         """Initialize LanceDB client."""
-        if not HAS_LANCEDB_SUPPORT:
-            logger.warning("LanceDB support not available - indexing will be skipped")
-            self.lancedb_client = None
-            return
-
         try:
             # Initialize LanceDB - create directory if it doesn't exist
             from pathlib import Path
@@ -1915,10 +1902,6 @@ class GoogleDriveProcessor:
         batch_size: int = 100,
     ) -> bool:
         """Index title cards in LanceDB with vector embeddings."""
-
-        if not HAS_LANCEDB_SUPPORT:
-            logger.error("LanceDB support not available")
-            return False
 
         if not self.lancedb_client:
             logger.error("LanceDB client not initialized")

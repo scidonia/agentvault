@@ -1208,17 +1208,6 @@ def index_titles(
     # Check for LanceDB and OpenAI support
     processor = GoogleDriveProcessor()
 
-    # Check if LanceDB support is available (import-level check)
-    from .google_drive_processor import HAS_LANCEDB_SUPPORT
-    
-    if not HAS_LANCEDB_SUPPORT:
-        console.print("❌ LanceDB support not available", style="red")
-        console.print("\n📋 [bold]Installation Instructions:[/bold]", style="yellow")
-        console.print("1. Install LanceDB dependencies:", style="yellow")
-        console.print("   [cyan]uv add lancedb[/cyan]", style="yellow")
-        console.print("2. Run the command again", style="yellow")
-        raise typer.Exit(1)
-
     if not processor.lancedb_client:
         console.print("❌ LanceDB client initialization failed", style="red")
         console.print("\n📋 [bold]Troubleshooting:[/bold]", style="yellow")
@@ -1328,20 +1317,6 @@ def clear_indexes(
 
     # Check for LanceDB support
     processor = GoogleDriveProcessor()
-
-    # Check if LanceDB support is available (import-level check)
-    from .google_drive_processor import HAS_LANCEDB_SUPPORT
-    
-    if not HAS_LANCEDB_SUPPORT:
-        console.print("❌ LanceDB support not available", style="red")
-        console.print("\n📋 [bold]Installation Instructions:[/bold]", style="yellow")
-        console.print("1. Install LanceDB dependencies:", style="yellow")
-        console.print("   [cyan]uv add lancedb openai[/cyan]", style="yellow")
-        console.print("2. Set your OpenAI API key:", style="yellow")
-        console.print(
-            "   [cyan]export OPENAI_API_KEY='your-api-key-here'[/cyan]", style="yellow"
-        )
-        raise typer.Exit(1)
 
     if not processor.lancedb_client:
         console.print("❌ LanceDB client initialization failed", style="red")
