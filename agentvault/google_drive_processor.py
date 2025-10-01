@@ -1821,10 +1821,15 @@ class GoogleDriveProcessor:
         """Initialize LanceDB client."""
         if not HAS_LANCEDB_SUPPORT:
             logger.warning("LanceDB support not available - indexing will be skipped")
+            self.lancedb_client = None
             return
 
         try:
-            # Initialize LanceDB
+            # Initialize LanceDB - create directory if it doesn't exist
+            from pathlib import Path
+            db_path = Path(LANCEDB_URI)
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            
             self.lancedb_client = lancedb.connect(LANCEDB_URI)
             logger.info("LanceDB client initialized successfully")
 
