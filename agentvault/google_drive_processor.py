@@ -28,33 +28,27 @@ except ImportError as e:
 
 # Import BookWyrm client for classification and PDF extraction
 try:
-    from bookwyrm.client import BookWyrmClient, BookWyrmAPIError
-    from bookwyrm.models import ClassifyRequest
+    from bookwyrm import BookWyrmClient, BookWyrmAPIError
+    from bookwyrm.models import (
+        ClassifyRequest,
+        PDFExtractRequest,
+        ProcessTextRequest,
+        ResponseFormat,
+        SummarizeRequest,
+        TextSpan,
+        TextResult,
+        TextSpanResult,
+        PhraseProgressUpdate,
+        ContentEncoding,
+    )
 
-    # Try to import PDF and phrasal processing models
-    try:
-        from bookwyrm.models import (
-            PDFExtractRequest,
-            ProcessTextRequest,
-            ResponseFormat,
-            SummarizeRequest,
-        )
-
-        HAS_PDF_SUPPORT = True
-    except ImportError:
-        print(
-            "⚠️  PDF extraction and phrasal processing not available in this BookWyrm client version"
-        )
-        HAS_PDF_SUPPORT = False
-        PDFExtractRequest = None
-        ProcessTextRequest = None
-        ResponseFormat = None
-        SummarizeRequest = None
+    HAS_PDF_SUPPORT = True
 
 except ImportError as e:
     print(f"❌ Missing BookWyrm client: {e}")
     print("Please ensure bookwyrm-client is available")
     print("Try: pip install bookwyrm-client")
+    HAS_PDF_SUPPORT = False
     raise
 
 # Import LanceDB and embedding libraries
@@ -364,15 +358,12 @@ class GoogleDriveProcessor:
                     content_bytes = content.encode("utf-8")
                     content_b64 = base64.b64encode(content_bytes).decode("ascii")
 
-                    # Create classification request
-                    request = ClassifyRequest(
+                    # Make API call using new method signature
+                    response = self.bookwyrm_client.classify(
                         content=content_b64,
                         filename=file_name,
-                        content_encoding="base64",
+                        content_encoding=ContentEncoding.BASE64,
                     )
-
-                    # Make API call
-                    response = self.bookwyrm_client.classify(request)
 
                     # Extract classification results
                     classification = response.classification
@@ -741,14 +732,11 @@ class GoogleDriveProcessor:
             request = self.service.files().get_media(fileId=file_id)
             pdf_content = request.execute()
 
-            # Encode as base64 for BookWyrm API
-            pdf_b64 = base64.b64encode(pdf_content).decode("ascii")
-
-            # Create PDF extraction request
-            extract_request = PDFExtractRequest(pdf_content=pdf_b64, filename=file_name)
-
-            # Make API call
-            response = self.bookwyrm_client.extract_pdf(extract_request)
+            # Make API call using new method signature
+            response = self.bookwyrm_client.extract_pdf(
+                content_bytes=pdf_content,
+                filename=file_name
+            )
 
             # Combine all text from all pages
             full_text = []
@@ -1055,34 +1043,39 @@ class GoogleDriveProcessor:
                     )
 
                 try:
-                    # Create phrasal processing request
-                    request = ProcessTextRequest(
-                        text=content,
-                        response_format=ResponseFormat.WITH_OFFSETS,
-                        spacy_model="en_core_web_sm",
-                    )
-
-                    # Process text into phrases
+                    # Process text into phrases using new streaming API
                     phrases = []
                     phrase_count = 0
 
-                    for response in self.bookwyrm_client.process_text(request):
-                        if hasattr(response, "text"):  # PhraseResult
-                            phrases.append(
-                                {
-                                    "file_hash": file_hash,
-                                    "file_name": file_name,
-                                    "content_source": file_info["content_source"],
-                                    "phrase_count": phrase_count,
-                                    "phrase": response.text,
-                                    "start_char": response.start_char,
-                                    "end_char": response.end_char,
-                                    "mime_type": file_info["mime_type"],
-                                    "category": file_info["category"],
-                                    "language": file_info["language"],
-                                }
-                            )
+                    for response in self.bookwyrm_client.stream_process_text(
+                        text=content,
+                        response_format=ResponseFormat.WITH_OFFSETS,
+                    ):
+                        if isinstance(response, (TextResult, TextSpanResult)):
+                            phrase_data = {
+                                "file_hash": file_hash,
+                                "file_name": file_name,
+                                "content_source": file_info["content_source"],
+                                "phrase_count": phrase_count,
+                                "phrase": response.text,
+                                "mime_type": file_info["mime_type"],
+                                "category": file_info["category"],
+                                "language": file_info["language"],
+                            }
+                            
+                            # Add position information if available
+                            if isinstance(response, TextSpanResult):
+                                phrase_data["start_char"] = response.start_char
+                                phrase_data["end_char"] = response.end_char
+                            else:
+                                phrase_data["start_char"] = 0
+                                phrase_data["end_char"] = len(response.text)
+                            
+                            phrases.append(phrase_data)
                             phrase_count += 1
+                        elif isinstance(response, PhraseProgressUpdate):
+                            # Handle progress updates if needed
+                            logger.debug(f"Progress: {response.message}")
 
                     all_phrases.extend(phrases)
                     processed_count += 1
@@ -1273,13 +1266,32 @@ class GoogleDriveProcessor:
                         f"Sending {len(clean_phrases)} phrases for summarization of {file_name}"
                     )
 
-                    # Create summarization request with phrases array
-                    request = SummarizeRequest(
-                        phrases=clean_phrases, max_tokens=max_tokens, debug=False
-                    )
+                    # Convert phrases to TextSpan objects for new API
+                    text_spans = []
+                    for phrase in clean_phrases:
+                        text_spans.append(TextSpan(
+                            text=phrase["text"],
+                            start_char=phrase.get("start_char", 0),
+                            end_char=phrase.get("end_char", len(phrase["text"]))
+                        ))
 
-                    # Make API call for summarization
-                    response = self.bookwyrm_client.summarize(request)
+                    # Use streaming summarize API and get final result
+                    final_response = None
+                    for response in self.bookwyrm_client.stream_summarize(
+                        phrases=text_spans,
+                        max_tokens=max_tokens,
+                        debug=False
+                    ):
+                        if hasattr(response, 'summary'):  # Final summary response
+                            final_response = response
+                            break
+
+                    if not final_response:
+                        logger.error(f"No summary response received for {file_name}")
+                        error_count += 1
+                        continue
+
+                    response = final_response
 
                     # Calculate original length from phrases
                     original_length = sum(len(p["text"]) for p in clean_phrases)
