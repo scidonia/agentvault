@@ -76,6 +76,7 @@
           uvpart = {
             workspaceRoot = ./.;
             extraPackages = [ pkgs.hello ];
+            python = pkgs.python312;
             uv = inputs'.uv2nix.packages.uv-bin;
           };
         };

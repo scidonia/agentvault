@@ -24,12 +24,14 @@ A powerful RAG (Retrieval-Augmented Generation) application that indexes and que
 ### Setup
 
 1. Clone the repository:
+
 ```bash
 git clone <repository-url>
 cd agentvault
 ```
 
 2. Install dependencies using uv:
+
 ```bash
 uv sync
 ```
@@ -46,11 +48,13 @@ uv sync
 ### Google Drive Indexing
 
 Index your entire Google Drive:
+
 ```bash
 agentvault index-drive
 ```
 
 Index with options:
+
 ```bash
 # Process only first 100 files
 agentvault index-drive --limit 100
@@ -78,6 +82,7 @@ agentvault drive-summary --file my_index.parquet
 ### Interactive Chat
 
 Ask questions about your indexed documents:
+
 ```bash
 agentvault chat
 ```
@@ -85,6 +90,7 @@ agentvault chat
 ### Single Query
 
 Ask a single question:
+
 ```bash
 agentvault query "What are the main topics in my documents?"
 
@@ -95,6 +101,7 @@ agentvault query "What are the main topics?" --citations
 ### Process Gutenberg Texts
 
 Process sample texts from Project Gutenberg:
+
 ```bash
 agentvault process
 ```
@@ -142,27 +149,32 @@ agentvault/
 ## How It Works
 
 ### 1. Authentication
+
 - Uses OAuth 2.0 to authenticate with Google Drive
 - Stores credentials securely for future use
 - Tests connection and displays connected user
 
 ### 2. File Discovery
+
 - Recursively traverses Google Drive structure
 - Extracts metadata (name, size, type, modified date)
 - Calculates file hashes for deduplication
 
 ### 3. Content Processing
+
 - Downloads supported file types
 - Extracts text content from various formats
 - Classifies files using BookWyrm AI
 - Generates embeddings for semantic search
 
 ### 4. Storage
+
 - Saves data in efficient Parquet format
 - Supports incremental updates
 - Hash-based deduplication prevents duplicates
 
 ### 5. Querying
+
 - Uses RAG (Retrieval-Augmented Generation)
 - Semantic search with embeddings
 - Provides citations and sources
@@ -234,23 +246,23 @@ agentvault drive-summary --file work_docs.parquet
 ### Authentication Issues
 
 1. Ensure credentials file is in `secret/` directory
-2. Check that Google Drive API is enabled
-3. Verify OAuth consent screen is configured
-4. Try deleting `secret/token.pickle` to force re-authentication
+1. Check that Google Drive API is enabled
+1. Verify OAuth consent screen is configured
+1. Try deleting `secret/token.pickle` to force re-authentication
 
 ### Performance Issues
 
 1. Use `--limit` to process files in smaller batches
-2. Check network connectivity for large files
-3. Monitor disk space for Parquet files
-4. Use `--debug` flag to identify bottlenecks
+1. Check network connectivity for large files
+1. Monitor disk space for Parquet files
+1. Use `--debug` flag to identify bottlenecks
 
 ### File Processing Errors
 
 1. Check file permissions in Google Drive
-2. Verify supported file types
-3. Review logs for specific error messages
-4. Use `--verbose` for detailed progress information
+1. Verify supported file types
+1. Review logs for specific error messages
+1. Use `--verbose` for detailed progress information
 
 ## Development
 
@@ -263,22 +275,22 @@ agentvault test
 ### Adding New File Types
 
 1. Update `SUPPORTED_MIME_TYPES` in `config.py`
-2. Add processing logic in `download_file_content()`
-3. Update classification rules in `classify_file()`
+1. Add processing logic in `download_file_content()`
+1. Update classification rules in `classify_file()`
 
 ### Extending the RAG Agent
 
 1. Modify `rag_agent.py` for custom query processing
-2. Add new embedding models in `config.py`
-3. Customize chunking strategies
+1. Add new embedding models in `config.py`
+1. Customize chunking strategies
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+1. Create a feature branch
+1. Make your changes
+1. Add tests if applicable
+1. Submit a pull request
 
 ## License
 
@@ -287,6 +299,7 @@ agentvault test
 ## Support
 
 For issues and questions:
+
 - Check the troubleshooting section
 - Review the logs with `--debug` flag
 - Open an issue on GitHub

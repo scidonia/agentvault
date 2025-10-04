@@ -53,14 +53,12 @@ This document outlines the process for indexing Google Drive files and creating 
   - Word documents using python-docx
   - Plain text files directly
   - Google Docs via export API
-- Chunk large documents for better RAG performance
-- Generate embeddings using configured model
+  - Build summaries from texts
 
 ### 6. Index Creation
 
-- Build searchable index from processed content
-- Store embeddings for semantic search
-- Create metadata index for filtering
+- Create "title cards" from summary, title, and classification information
+- Put these "title cards" into a Pinecone hybrid index
 
 ## Implementation Components
 
